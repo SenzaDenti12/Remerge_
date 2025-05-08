@@ -1,16 +1,16 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
 
 // This is a handler page that redirects users from login to checkout
-export default function CheckoutRedirectHandler({ params }: { params: { priceId: string } }) {
+export default function CheckoutRedirectHandler() {
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
   const supabase = createClient();
-  const { priceId } = params;
+  const { priceId } = useParams<{ priceId?: string }>() ?? {};
 
   useEffect(() => {
     const handleRedirect = async () => {
