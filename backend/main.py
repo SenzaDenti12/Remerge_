@@ -72,10 +72,11 @@ class RegenerateScriptRequest(BaseModel):
 
 # --- CORS Configuration --- 
 origins = [
-    "http://localhost:3000", # Allow your frontend origin
-    "https://YOUR_FRONTEND_DOMAIN", # <<<< TODO: REPLACE THIS WITH YOUR ACTUAL VERCEL DOMAIN
-    # Add your deployed frontend origin here later, e.g.:
-    # "https://your-app-domain.com", 
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "https://rmerge.com",
+    "https://www.rmerge.com",
+    "https://api.rmerge.com", # if you ever call the API from the API (Internal)
 ]
 
 app.add_middleware(
