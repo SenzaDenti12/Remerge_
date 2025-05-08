@@ -817,7 +817,17 @@ if __name__ == "__main__":
     # Check Redis connection on startup
     try:
         redis_client.ping()
-        print(f"Worker connected to Redis. Listening to stream '{MEME_JOB_STREAM}'...")
+        print(f"Worker connected to Redis at {REDIS_URL}. Listening to stream '{MEME_JOB_STREAM}'...")
+        
+        # Debug: Check if stream exists and has entries
+        try:
+            stream_info = redis_client.xinfo_stream(MEME_JOB_STREAM)
+            print(f"[DEBUG] Stream info: Length={stream_info.get('length')}, First entry ID={stream_info.get('first-entry')[0] if stream_info.get('first-entry') else 'none'}")
+        except redis.exceptions.ResponseError as e:
+            if "no such key" in str(e).lower():
+                print(f"[DEBUG] Stream '{MEME_JOB_STREAM}' does not exist yet. Will be created when first job arrives.")
+            else:
+                print(f"[DEBUG] Error checking stream info: {e}")
     except redis.exceptions.ConnectionError as e:
         print(f"FATAL: Worker could not connect to Redis. Exiting. Error: {e}")
         exit(1)
@@ -839,6 +849,7 @@ if __name__ == "__main__":
 
     while True:
         try:
+            print("[DEBUG] Waiting for new jobs...")
             # Read from the stream, block for up to 5 seconds if no new messages
             # '>' means read new messages not yet delivered to this group
             # Use count=1 to process one job at a time
@@ -851,7 +862,10 @@ if __name__ == "__main__":
             )
 
             if not response:
-                # print("No new jobs, waiting...") # Optional: verbose logging
+                # Check for pending jobs (delivered but not acknowledged)
+                pending = redis_client.xpending(MEME_JOB_STREAM, group_name)
+                if pending and pending[0] > 0:  # Check if count > 0
+                    print(f"[DEBUG] {pending[0]} pending jobs found. Oldest: {pending[1]}, newest: {pending[2]}")
                 continue
 
             # Response format: [[stream_name, [[message_id, {field: value}]]]]

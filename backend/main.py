@@ -19,6 +19,7 @@ import redis # Import redis
 from worker import update_job_status # <-- Import the function
 from openai import OpenAI, OpenAIError # Import OpenAI client
 import time
+import datetime
 
 load_dotenv() # Ensure env vars are loaded
 
@@ -881,3 +882,81 @@ MODIFICATION REQUEST:
     except Exception as e:
         print(f"Unexpected error regenerating script: {e}")
         raise HTTPException(status_code=500, detail=f"Error regenerating script: {str(e)}")
+
+# --- Debug Endpoints --- 
+
+@app.get("/api/debug/redis-status")
+async def debug_redis_status():
+    """Debug endpoint to check Redis connection and stream status."""
+    try:
+        # Check Redis connection
+        ping_result = redis_client.ping()
+        
+        # Check if stream exists
+        try:
+            stream_info = redis_client.xinfo_stream(MEME_JOB_STREAM)
+            stream_exists = True
+            stream_length = stream_info.get('length', 0)
+            first_entry = stream_info.get('first-entry', ['none'])[0] if stream_info.get('first-entry') else 'none'
+            last_entry = stream_info.get('last-entry', ['none'])[0] if stream_info.get('last-entry') else 'none'
+        except redis.exceptions.ResponseError as e:
+            if "no such key" in str(e).lower():
+                stream_exists = False
+                stream_length = 0
+                first_entry = 'n/a'
+                last_entry = 'n/a'
+            else:
+                raise
+
+        # Count job status keys
+        job_status_count = len(redis_client.keys("job_status:*"))
+        
+        # Return status information
+        return {
+            "redis_connected": bool(ping_result),
+            "stream_exists": stream_exists,
+            "stream_length": stream_length,
+            "stream_first_entry": first_entry,
+            "stream_last_entry": last_entry,
+            "job_status_count": job_status_count
+        }
+    except Exception as e:
+        print(f"[ERROR] Redis status check failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Redis status check failed: {str(e)}")
+
+@app.post("/api/debug/publish-test-job")
+async def debug_publish_test_job(user_id: str = Depends(get_current_user_id)):
+    """Debug endpoint to directly publish a test job to Redis."""
+    try:
+        job_id = str(uuid.uuid4())
+        job_data = {
+            "job_id": job_id,
+            "user_id": user_id,
+            "avatar_s3_key": "test/avatar.jpg",
+            "video_s3_key": None,
+            "status": "queued",
+            "test_job": True
+        }
+        
+        # Add the job to the stream
+        stream_id = redis_client.xadd(MEME_JOB_STREAM, {"job_data": json.dumps(job_data)})
+        
+        # Create a job status entry manually
+        status_key = f"job_status:{job_id}"
+        redis_client.hset(status_key, mapping={
+            "status": "test_created",
+            "stage": "test",
+            "user_id": user_id,
+            "created_at": datetime.datetime.now().isoformat()
+        })
+        redis_client.expire(status_key, 3600 * 24)  # 24 hour expiry
+        
+        return {
+            "success": True,
+            "job_id": job_id,
+            "stream_id": stream_id,
+            "message": "Test job published to Redis stream and status created"
+        }
+    except Exception as e:
+        print(f"[ERROR] Failed to publish test job: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to publish test job: {str(e)}")

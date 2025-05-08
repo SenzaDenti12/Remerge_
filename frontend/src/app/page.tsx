@@ -90,11 +90,11 @@ export default async function Home() {
               <li className="flex items-start gap-3">
                 <span className="text-primary mt-1">✓</span>
                 <span className="text-base">Marketers needing engaging social media content</span>
-            </li>
+          </li>
               <li className="flex items-start gap-3">
                 <span className="text-primary mt-1">✓</span>
                 <span className="text-base">Influencers wanting to stand out on social platforms</span>
-            </li>
+          </li>
             </ul>
           </div>
         </div>
