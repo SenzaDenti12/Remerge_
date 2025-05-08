@@ -1,0 +1,299 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Syne:wght@400;500;600;700;800&display=swap');
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+  /* Main theme variables */
+  --magenta: #fb27ff;
+  --cyan: #00ceff;
+  --magenta-dark: #c310c6;
+  --cyan-dark: #0099c2;
+  --gradient-primary: linear-gradient(135deg, var(--magenta) 0%, var(--cyan) 100%);
+  --gradient-primary-hover: linear-gradient(135deg, var(--magenta-dark) 0%, var(--cyan-dark) 100%);
+  
+  --radius: 0.75rem;
+  
+  /* Light theme (not actively used but kept for reference) */
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --chart-1: oklch(0.646 0.222 41.116);
+  --chart-2: oklch(0.6 0.118 184.704);
+  --chart-3: oklch(0.398 0.07 227.392);
+  --chart-4: oklch(0.828 0.189 84.429);
+  --chart-5: oklch(0.769 0.188 70.08);
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+}
+
+/* Dark theme - this is the primary theme we're enhancing */
+.dark {
+  /* Core Colors */
+  --background: #0a0c10;
+  --foreground: #ffffff;
+  
+  /* Primary Colors - Based on specified brand colors */
+  --primary: #fb27ff; /* Magenta as specified */
+  --primary-foreground: #ffffff;
+  
+  /* Secondary Colors */
+  --secondary: #00ceff; /* Cyan as specified */
+  --secondary-foreground: #ffffff;
+  
+  /* Card & Surface Elements */
+  --card: #14161c;
+  --card-foreground: #ffffff;
+  --popover: #14161c;
+  --popover-foreground: #ffffff;
+  
+  /* Accent & Interactive Elements */
+  --accent: rgba(251, 39, 255, 0.1); /* Reduced opacity for better performance */
+  --accent-foreground: #ffffff;
+  
+  /* Muted Elements */
+  --muted: #1a1d25;
+  --muted-foreground: #a3a3c2;
+  
+  /* Borders & Inputs - More prominent borders */
+  --border: rgba(251, 39, 255, 0.4); /* Increased opacity for more visibility */
+  --input: #1a1d25;
+  --ring: rgba(0, 206, 255, 0.7); /* Increased visibility */
+  
+  /* Destructive */
+  --destructive: #ff4a4a;
+  --destructive-foreground: #ffffff;
+  
+  /* Charts & Visualizations */
+  --chart-1: var(--primary);
+  --chart-2: var(--secondary);
+  --chart-3: #9945FF;
+  --chart-4: #14F195;
+  --chart-5: #FFAF3A;
+  
+  /* Sidebar */
+  --sidebar: var(--background);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: var(--accent);
+  --sidebar-accent-foreground: var(--accent-foreground);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
+}
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Inter', sans-serif;
+    font-size: 16px;
+    letter-spacing: -0.01em;
+    /* Simplified background for better performance */
+    background-image: radial-gradient(
+      circle at center,
+      rgba(251, 39, 255, 0.02) 0%,
+      rgba(0, 206, 255, 0.02) 100%
+    );
+    background-attachment: fixed;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Syne', sans-serif;
+    @apply font-bold tracking-tight;
+    letter-spacing: -0.02em;
+  }
+  
+  h1 {
+    @apply text-4xl md:text-5xl lg:text-6xl;
+    line-height: 1.1;
+  }
+  
+  h2 {
+    @apply text-3xl md:text-4xl lg:text-5xl;
+    line-height: 1.2;
+  }
+  
+  h3 {
+    @apply text-2xl md:text-3xl;
+    line-height: 1.3;
+  }
+  
+  p {
+    @apply text-base md:text-lg;
+    line-height: 1.6;
+  }
+  
+  .logo-text {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+  }
+}
+
+/* Custom utility classes for our redesign */
+@layer utilities {
+  /* Text gradient using our brand colors */
+  .text-gradient {
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-image: var(--gradient-primary);
+  }
+  
+  /* Brand gradient backgrounds */
+  .bg-gradient-primary {
+    background-image: var(--gradient-primary);
+  }
+  
+  .bg-gradient-primary-hover {
+    background-image: var(--gradient-primary-hover);
+  }
+  
+  /* Card with cleaner, more minimal styling */
+  .bg-glass {
+    @apply bg-card border-2 border-border shadow-md;
+  }
+  
+  /* Removed glowing elements and replaced with cleaner borders */
+  .glow-primary {
+    @apply border-2 border-primary/60;
+  }
+  
+  .glow-secondary {
+    @apply border-2 border-secondary/60;
+  }
+  
+  /* Media preview with enhanced styling */
+  .media-preview {
+    @apply relative overflow-hidden rounded-lg border-2 border-border bg-muted/50 shadow-sm;
+  }
+  
+  /* Consistent section and content styling */
+  .section-title {
+    @apply text-3xl md:text-4xl font-bold mb-6;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+  }
+  
+  .card-title {
+    @apply text-xl md:text-2xl font-semibold;
+    letter-spacing: -0.01em;
+    line-height: 1.3;
+  }
+
+  .btn-text {
+    @apply text-base md:text-lg font-medium;
+  }
+  
+  /* Wider content container for less cramped layouts */
+  .content-container {
+    @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8;
+  }
+  
+  /* Notification styling for video ready alerts - simplified for better performance */
+  .video-ready-alert {
+    @apply fixed bottom-4 right-4 p-4 bg-card border-2 border-primary/70 rounded-lg shadow-md z-50;
+  }
+  
+  /* Layout helpers */
+  .page-container {
+    @apply max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 py-6 md:py-10;
+  }
+  
+  .flex-center {
+    @apply flex items-center justify-center;
+  }
+  
+  .flex-between {
+    @apply flex items-center justify-between;
+  }
+}
+
+/* Simplified scrollbar styling */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--muted);
+  border-radius: 0;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--primary);
+  border-radius: 0;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--secondary);
+}
