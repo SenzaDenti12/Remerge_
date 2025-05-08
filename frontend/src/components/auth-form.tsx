@@ -7,37 +7,101 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { toast } from "sonner"
 import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from "@/components/ui/card"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { useRouter, useSearchParams } from 'next/navigation'
 
 export default function AuthForm() {
   const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isEmailSent, setIsEmailSent] = useState(false)
+  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login')
   const supabase = createClient()
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const returnTo = searchParams.get('return_to') || '/dashboard'
 
-  const handleLogin = async (event: React.FormEvent<HTMLFormElement>) => {
+  // Handle magic link auth
+  const handleMagicLinkAuth = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setIsSubmitting(true)
     try {
       const { error } = await supabase.auth.signInWithOtp({
         email: email,
         options: {
-          // set this to false if you do not want the user to be automatically signed up
           shouldCreateUser: true,
-          emailRedirectTo: window.location.origin, // Redirect back to the app
+          emailRedirectTo: `${window.location.origin}${returnTo}`,
         },
       })
 
       if (error) {
         console.error('Error sending magic link:', error)
-        // Replace with user-friendly notification
-        toast.error(`Error: ${error.message}`) // Use toast.error
+        toast.error(`Error: ${error.message}`)
       } else {
         setIsEmailSent(true)
-        toast.success('Check your email for the magic link!') // Use toast.success
+        toast.success('Check your email for the magic link!')
       }
     } catch (error) {
         console.error('Unexpected error:', error)
-        toast.error('An unexpected error occurred. Please try again.') // Use toast.error
+        toast.error('An unexpected error occurred. Please try again.')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  // Handle email + password auth
+  const handleEmailPasswordAuth = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setIsSubmitting(true)
+    
+    try {
+      if (authMode === 'signup') {
+        // Check if passwords match for signup
+        if (password !== confirmPassword) {
+          toast.error('Passwords do not match')
+          setIsSubmitting(false)
+          return
+        }
+        
+        // Sign up with email and password
+        const { error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            emailRedirectTo: `${window.location.origin}${returnTo}`,
+          }
+        })
+        
+        if (error) {
+          toast.error(`Error: ${error.message}`)
+        } else {
+          toast.success('Account created! Check your email for confirmation.')
+        }
+      } else {
+        // Sign in with email and password
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email,
+          password
+        })
+        
+        if (error) {
+          toast.error(`Error: ${error.message}`)
+        } else {
+          // Show success toast
+          toast.success('Login successful!')
+          
+          // Explicitly navigate to dashboard or returnTo path
+          if (returnTo && returnTo !== '/dashboard') {
+            router.push(returnTo)
+          } else {
+            router.push('/dashboard')
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Unexpected error:', error)
+      toast.error('An unexpected error occurred. Please try again.')
     } finally {
       setIsSubmitting(false)
     }
@@ -75,31 +139,117 @@ export default function AuthForm() {
             </div>
           </div>
         ) : (
-          <form onSubmit={handleLogin} className="space-y-6">
-            <div className="space-y-3">
-              <Label htmlFor="email" className="text-lg text-foreground">Email Address</Label>
-              <Input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
-                required
-                placeholder="you@example.com"
-                disabled={isSubmitting}
-                className="bg-secondary/20 border-secondary/30 h-14 px-5 text-lg focus:ring-2 focus:ring-primary/50 focus:shadow-glow-sm-primary transition duration-200"
-              />
-              <p className="text-base text-muted-foreground mt-2">We'll send you a magic link to sign in instantly.</p>
-            </div>
-            <Button 
-              type="submit" 
-              disabled={isSubmitting || !email} 
-              variant="default"
-              size="lg"
-              className="w-full py-6 text-lg"
-            >
-              {isSubmitting ? 'Sending Magic Link...' : 'Sign In with Email'}
-            </Button>
-          </form>
+          <Tabs defaultValue="emailpass" className="w-full">
+            <TabsList className="grid grid-cols-2 mb-8">
+              <TabsTrigger value="emailpass">Email + Password</TabsTrigger>
+              <TabsTrigger value="magiclink">Magic Link</TabsTrigger>
+            </TabsList>
+            
+            {/* Email + Password */}
+            <TabsContent value="emailpass" className="space-y-4">
+              <div className="flex gap-4 mb-6">
+                <Button 
+                  variant={authMode === 'login' ? 'default' : 'outline'} 
+                  className="flex-1"
+                  onClick={() => setAuthMode('login')}
+                >
+                  Login
+                </Button>
+                <Button 
+                  variant={authMode === 'signup' ? 'default' : 'outline'} 
+                  className="flex-1"
+                  onClick={() => setAuthMode('signup')}
+                >
+                  Sign Up
+                </Button>
+              </div>
+              
+              <form onSubmit={handleEmailPasswordAuth} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="email-password" className="text-lg text-foreground">Email Address</Label>
+                  <Input
+                    id="email-password"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    placeholder="you@example.com"
+                    disabled={isSubmitting}
+                    className="bg-secondary/20 border-secondary/30 h-12 px-4 focus:ring-2 focus:ring-primary/50 focus:shadow-glow-sm-primary transition duration-200"
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="password" className="text-lg text-foreground">Password</Label>
+                  <Input
+                    id="password"
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    placeholder="Your password"
+                    disabled={isSubmitting}
+                    className="bg-secondary/20 border-secondary/30 h-12 px-4 focus:ring-2 focus:ring-primary/50 focus:shadow-glow-sm-primary transition duration-200"
+                  />
+                </div>
+                
+                {authMode === 'signup' && (
+                  <div className="space-y-2">
+                    <Label htmlFor="confirm-password" className="text-lg text-foreground">Confirm Password</Label>
+                    <Input
+                      id="confirm-password"
+                      type="password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      required
+                      placeholder="Confirm password"
+                      disabled={isSubmitting}
+                      className="bg-secondary/20 border-secondary/30 h-12 px-4 focus:ring-2 focus:ring-primary/50 focus:shadow-glow-sm-primary transition duration-200"
+                    />
+                  </div>
+                )}
+                
+                <Button 
+                  type="submit" 
+                  disabled={isSubmitting || !email || !password || (authMode === 'signup' && !confirmPassword)} 
+                  variant="default"
+                  size="lg"
+                  className="w-full py-5 text-lg mt-4"
+                >
+                  {isSubmitting ? 'Processing...' : (authMode === 'login' ? 'Login' : 'Create Account')}
+                </Button>
+              </form>
+            </TabsContent>
+            
+            {/* Magic Link */}
+            <TabsContent value="magiclink">
+              <form onSubmit={handleMagicLinkAuth} className="space-y-6">
+                <div className="space-y-3">
+                  <Label htmlFor="email-magic" className="text-lg text-foreground">Email Address</Label>
+                  <Input
+                    id="email-magic"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    placeholder="you@example.com"
+                    disabled={isSubmitting}
+                    className="bg-secondary/20 border-secondary/30 h-14 px-5 text-lg focus:ring-2 focus:ring-primary/50 focus:shadow-glow-sm-primary transition duration-200"
+                  />
+                  <p className="text-base text-muted-foreground mt-2">We'll send you a magic link to sign in instantly.</p>
+                </div>
+                <Button 
+                  type="submit" 
+                  disabled={isSubmitting || !email} 
+                  variant="default"
+                  size="lg"
+                  className="w-full py-6 text-lg"
+                >
+                  {isSubmitting ? 'Sending Magic Link...' : 'Sign In with Email Link'}
+                </Button>
+              </form>
+            </TabsContent>
+          </Tabs>
         )}
       </CardContent>
       

@@ -5,73 +5,89 @@ import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import Link from 'next/link'
 import { toast } from 'sonner'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { CheckCircle } from 'lucide-react'
 
 export default function BillingPage() {
     const [loading, setLoading] = useState(true);
-    const [isSubscribed, setIsSubscribed] = useState(false); // Placeholder state
-    const [stripeCustomerId, setStripeCustomerId] = useState<string | null>(null); // Placeholder state
+    const [isSubscribed, setIsSubscribed] = useState(false);
+    const [isAuthenticated, setIsAuthenticated] = useState(false);
+    const [stripeCustomerId, setStripeCustomerId] = useState<string | null>(null);
     const [isLoadingCheckout, setIsLoadingCheckout] = useState(false);
     const [isLoadingPortal, setIsLoadingPortal] = useState(false);
     const supabase = createClient();
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const returnPath = searchParams.get('return_to');
 
     // State to store fetched plan details
     const [planName, setPlanName] = useState<string | null>(null);
 
     useEffect(() => {
-        const checkSubscription = async () => {
+        const checkAuth = async () => {
              setLoading(true);
              const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-             if (sessionError || !session) {
-                 toast.error("Please log in to manage billing.");
-                 // Redirect if no session on client-side either
-                 router.push('/login'); 
-                 setLoading(false); 
-                 return;
-             }
-             const token = session.access_token;
+             
+             // Update authentication state but don't redirect
+             setIsAuthenticated(!!session && !sessionError);
+             
+             if (session && !sessionError) {
+                 const token = session.access_token;
 
-             // Fetch subscription status from our backend
-             try {
-                 const statusResponse = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_API_URL}/api/subscription-status`, {
-                     headers: {
-                         'Authorization': `Bearer ${token}`
+                 // Fetch subscription status from our backend only if authenticated
+                 try {
+                     const statusResponse = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_API_URL}/api/subscription-status`, {
+                         headers: {
+                             'Authorization': `Bearer ${token}`
+                         }
+                     });
+                     if (!statusResponse.ok) {
+                         const errorData = await statusResponse.json().catch(() => ({}));
+                         throw new Error(errorData.detail || "Failed to fetch subscription status");
                      }
-                 });
-                 if (!statusResponse.ok) {
-                     const errorData = await statusResponse.json().catch(() => ({}));
-                     throw new Error(errorData.detail || "Failed to fetch subscription status");
-                 }
-                 const statusData = await statusResponse.json();
-                 
-                 console.log("Subscription Status Data:", statusData); // Log fetched data
-                 setIsSubscribed(statusData.isActive || false);
-                 setStripeCustomerId(statusData.stripeCustomerId || null);
-                 // TODO: Store/display planName (statusData.planName) if needed
-                 setPlanName(statusData.planName || null);
+                     const statusData = await statusResponse.json();
+                     
+                     console.log("Subscription Status Data:", statusData);
+                     setIsSubscribed(statusData.isActive || false);
+                     setStripeCustomerId(statusData.stripeCustomerId || null);
+                     setPlanName(statusData.planName || null);
 
-             } catch (error) {
-                 console.error("Failed to fetch subscription status:", error);
-                 toast.error(`Error loading billing info: ${(error as Error).message}`);
-                 // Keep defaults (not subscribed)
+                 } catch (error) {
+                     console.error("Failed to fetch subscription status:", error);
+                     // Only show toast error if authenticated
+                     toast.error(`Error loading billing info: ${(error as Error).message}`);
+                     setIsSubscribed(false);
+                     setStripeCustomerId(null);
+                     setPlanName(null);
+                 }
+             } else {
+                 // Not authenticated - show pricing only
                  setIsSubscribed(false);
                  setStripeCustomerId(null);
-                 setPlanName(null); // Reset plan name on error
+                 setPlanName(null);
              }
 
              setLoading(false);
         };
-        checkSubscription();
-    }, [supabase, router]);
+        
+        checkAuth();
+    }, [supabase]);
 
     const handleCheckout = async (priceId: string) => {
+        // Check if the user is authenticated
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        // If not authenticated, redirect to login with return path
+        if (!session) {
+            const returnUrl = `/login?return_to=/billing/checkout/${priceId}`;
+            router.push(returnUrl);
+            return;
+        }
+        
+        // Continue checkout process if authenticated
         setIsLoadingCheckout(true);
         try {
-            const { data: { session } } = await supabase.auth.getSession();
-            if (!session) throw new Error("User not logged in");
             const token = session.access_token;
 
             const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_API_URL}/api/create-checkout-session`, {
@@ -135,6 +151,26 @@ export default function BillingPage() {
         }
     };
 
+    // Check if there's a price ID in the URL path for direct checkout after login
+    useEffect(() => {
+        const checkForCheckoutRedirect = async () => {
+            // Check if we're returning from login with checkout intent
+            if (returnPath && returnPath.startsWith('/billing/checkout/') && isAuthenticated) {
+                const pathParts = returnPath.split('/');
+                const priceId = pathParts[pathParts.length - 1];
+                
+                if (priceId && priceId.startsWith('price_')) {
+                    // Automatically trigger checkout for the stored price ID
+                    handleCheckout(priceId);
+                }
+            }
+        };
+        
+        if (isAuthenticated && !loading) {
+            checkForCheckoutRedirect();
+        }
+    }, [isAuthenticated, loading, returnPath]);
+
     // Use environment variables for Price IDs, with fallbacks
     const creatorPriceId = process.env.NEXT_PUBLIC_STRIPE_PRICE_ID_CREATOR || 'YOUR_CREATOR_PRICE_ID';
     const proPriceId = process.env.NEXT_PUBLIC_STRIPE_PRICE_ID_PRO || 'YOUR_PRO_PRICE_ID';
@@ -142,16 +178,6 @@ export default function BillingPage() {
 
     // Basic check for valid customer ID (not the placeholder)
     const hasValidCustomerId = stripeCustomerId && stripeCustomerId !== 'cus_TESTFROMCLI';
-
-    // --- DEBUG LOGGING --- 
-    console.log("[BillingPage Debug]");
-    console.log("Loading:", loading);
-    console.log("Is Subscribed:", isSubscribed);
-    console.log("Is Loading Checkout:", isLoadingCheckout);
-    console.log("Creator Price ID:", creatorPriceId, "Valid:", creatorPriceId.startsWith('price_'));
-    console.log("Pro Price ID:", proPriceId, "Valid:", proPriceId.startsWith('price_'));
-    console.log("Growth Price ID:", growthPriceId, "Valid:", growthPriceId.startsWith('price_'));
-    // --- END DEBUG LOGGING ---
 
     if (loading) {
         // Improved Loading State
@@ -167,8 +193,10 @@ export default function BillingPage() {
         <div className="content-container py-12 md:py-24">
           {/* Back link */}
           <div className="absolute top-6 left-6">
-            <Link href="/dashboard">
-              <Button variant="outline">Back to Dashboard</Button>
+            <Link href={isAuthenticated ? "/dashboard" : "/"}>
+              <Button variant="outline">
+                {isAuthenticated ? "Back to Dashboard" : "Back to Home"}
+              </Button>
             </Link>
           </div>
       
@@ -178,12 +206,13 @@ export default function BillingPage() {
               Billing &amp; Subscription
             </h1>
             <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-              Manage your subscription plan, view billing history, and update payment
-              details.
+              {isAuthenticated 
+                ? "Manage your subscription plan, view billing history, and update payment details."
+                : "Choose a plan that fits your needs."}
             </p>
           </div>
       
-          {isSubscribed ? (
+          {isAuthenticated && isSubscribed ? (
             /* ---------- Current Subscription View ---------- */
             <Card className="w-full max-w-2xl mx-auto">
               <CardHeader className="text-center">
@@ -268,7 +297,7 @@ export default function BillingPage() {
                       className="w-full mb-4"
                       size="lg"
                     >
-                      {isLoadingCheckout ? "Redirecting..." : "Subscribe to Creator"}
+                      {isLoadingCheckout ? "Redirecting..." : (isAuthenticated ? "Subscribe to Creator" : "Sign Up & Subscribe")}
                     </Button>
                   </CardFooter>
                 </Card>
@@ -319,7 +348,7 @@ export default function BillingPage() {
                       size="lg"
                       variant="default"
                     >
-                      {isLoadingCheckout ? "Redirecting..." : "Subscribe to Pro"}
+                      {isLoadingCheckout ? "Redirecting..." : (isAuthenticated ? "Subscribe to Pro" : "Sign Up & Subscribe")}
                     </Button>
                   </CardFooter>
                 </Card>
@@ -366,15 +395,28 @@ export default function BillingPage() {
                       className="w-full mb-4"
                       size="lg"
                     >
-                      {isLoadingCheckout ? "Redirecting..." : "Subscribe to Growth"}
+                      {isLoadingCheckout ? "Redirecting..." : (isAuthenticated ? "Subscribe to Growth" : "Sign Up & Subscribe")}
                     </Button>
                   </CardFooter>
                 </Card>
               </div>
       
-              <p className="text-center text-muted-foreground mt-12">
-                All plans are billed monthly. 1 video = approximately 1 minute of content.
-              </p>
+              <div className="text-center max-w-3xl mx-auto mt-12">
+                <p className="text-muted-foreground">
+                  All plans are billed monthly. 1 video = approximately 1 minute of content.
+                </p>
+                {!isAuthenticated && (
+                  <p className="text-muted-foreground mt-6">
+                    <Link href="/login" className="text-primary underline underline-offset-4">
+                      Sign in
+                    </Link> to your account first if you already have one, or create an account during checkout.
+                  </p>
+                )}
+                <p className="text-muted-foreground mt-4">
+                  Not ready to commit? <Link href="/demo" className="text-primary underline underline-offset-4">Try our demo</Link> or 
+                  start with <Link href="/login?return_to=/generate" className="text-primary underline underline-offset-4">one free video</Link>.
+                </p>
+              </div>
             </>
           )}
         </div>

@@ -3,6 +3,8 @@ import { Inter, Syne } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
 import AuthListener from "@/components/auth-listener";
+import { createClient } from "@/lib/supabase/server";
+import Link from 'next/link';
 
 const inter = Inter({
   variable: "--font-inter",
@@ -20,11 +22,22 @@ export const metadata: Metadata = {
   description: "Create viral-worthy videos for Instagram, TikTok, and YouTube Shorts with AI-powered lip sync and voice technology.",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Check if user is authenticated
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  
+  // Determine destinations for nav links based on auth status
+  const dashboardLink = user ? "/dashboard" : "/login?return_to=/dashboard";
+  const generateLink = user ? "/generate" : "/login?return_to=/generate"; 
+  // Billing/pricing is always accessible without login
+  const billingLink = "/billing";
+  const getStartedLink = user ? "/generate" : "/login?return_to=/generate";
+  
   return (
     <html lang="en" data-mode="dark" className="dark">
       <body
@@ -46,21 +59,21 @@ export default function RootLayout({
             </a>
             
             <nav className="hidden md:flex items-center space-x-8">
-              <a href="/dashboard" className="text-foreground/80 hover:text-foreground transition font-medium">
+              <Link href={dashboardLink} className="text-foreground/80 hover:text-foreground transition font-medium">
                 Dashboard
-              </a>
-              <a href="/generate" className="text-foreground/80 hover:text-foreground transition font-medium">
+              </Link>
+              <Link href={generateLink} className="text-foreground/80 hover:text-foreground transition font-medium">
                 Create Video
-              </a>
-              <a href="/billing" className="text-foreground/80 hover:text-foreground transition font-medium">
+              </Link>
+              <Link href={billingLink} className="text-foreground/80 hover:text-foreground transition font-medium">
                 Pricing
-              </a>
-              <a 
-                href="/generate" 
+              </Link>
+              <Link 
+                href={getStartedLink} 
                 className="px-5 py-2 rounded-lg bg-gradient-primary hover:bg-gradient-primary-hover transition-all font-medium text-white shadow-md hover:shadow-lg"
               >
                 Get Started
-              </a>
+              </Link>
             </nav>
             
             <button className="md:hidden text-foreground">
@@ -73,7 +86,7 @@ export default function RootLayout({
           </div>
         </header>
         <main className="flex-grow page-container py-8 md:py-12">
-          {children}
+        {children}
         </main>
         <footer className="py-12 mt-auto bg-card/30">
           <div className="page-container">
@@ -106,9 +119,9 @@ export default function RootLayout({
                 <div>
                   <h4 className="font-semibold mb-4 text-lg">Platform</h4>
                   <ul className="space-y-3 text-muted-foreground">
-                    <li><a href="/dashboard" className="hover:text-primary transition-colors">Dashboard</a></li>
-                    <li><a href="/generate" className="hover:text-primary transition-colors">Create Video</a></li>
-                    <li><a href="/templates" className="hover:text-primary transition-colors">Templates</a></li>
+                    <li><Link href={dashboardLink} className="hover:text-primary transition-colors">Dashboard</Link></li>
+                    <li><Link href={generateLink} className="hover:text-primary transition-colors">Create Video</Link></li>
+                    <li><Link href="/demo" className="hover:text-primary transition-colors">Demo</Link></li>
                   </ul>
                 </div>
                 <div>

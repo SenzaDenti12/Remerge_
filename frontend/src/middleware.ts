@@ -1,6 +1,15 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
+// Define protected routes that require authentication
+const PROTECTED_ROUTES = ['/dashboard', '/generate']
+
+// Define routes that require authentication only for specific actions
+// These routes are viewable without auth but certain actions need auth
+const PARTIAL_PROTECTED_ROUTES = {
+  '/billing': ['/checkout', '/purchase'] // sub-paths that need auth
+}
+
 export async function middleware(request: NextRequest) {
   let response = NextResponse.next({
     request: {
@@ -59,10 +68,34 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  // IMPORTANT: Avoid writing handling logic here. The purpose of this middleware is to manage the auth session cookie.
-  // Refresh session if expired - required for Server Components
-  // https://supabase.com/docs/guides/auth/auth-helpers/nextjs#managing-session-with-middleware
-  await supabase.auth.getUser() // Changed from getSession() to getUser() as per some Supabase examples, it handles refresh implicitly.
+  // Refresh session if expired
+  const { data: { user } } = await supabase.auth.getUser()
+
+  // Check if the request is for a protected route
+  const url = new URL(request.url)
+  const isProtectedRoute = PROTECTED_ROUTES.some(route => 
+    url.pathname === route || url.pathname.startsWith(`${route}/`)
+  )
+
+  // Check if the route has partial protection (certain actions need auth)
+  let needsAuthForAction = false;
+  for (const [basePath, protectedPaths] of Object.entries(PARTIAL_PROTECTED_ROUTES)) {
+    if (url.pathname.startsWith(basePath)) {
+      // Check if any protected sub-paths are in the current URL
+      needsAuthForAction = protectedPaths.some(subPath => 
+        url.pathname.includes(subPath)
+      );
+      break;
+    }
+  }
+
+  // If accessing a protected route or protected action without authentication, redirect to login
+  if ((isProtectedRoute || needsAuthForAction) && !user) {
+    const redirectUrl = new URL('/login', request.url)
+    // Optionally add a return_to parameter to redirect back after login
+    redirectUrl.searchParams.set('return_to', url.pathname)
+    return NextResponse.redirect(redirectUrl)
+  }
 
   return response
 }
@@ -76,6 +109,6 @@ export const config = {
      * - favicon.ico (favicon file)
      * Feel free to modify this pattern to include more paths.
      */
-    '/((?!_next/static|_next/image|favicon.ico).*)',
+    '/((?!_next/static|_next/image|favicon.ico|api/).*)',
   ],
 } 
