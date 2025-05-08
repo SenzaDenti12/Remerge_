@@ -31,7 +31,7 @@ export default function AuthForm() {
         email: email,
         options: {
           shouldCreateUser: true,
-          emailRedirectTo: `${window.location.origin}${returnTo}`,
+          emailRedirectTo: `${window.location.origin}/auth/callback?return_to=${encodeURIComponent(returnTo)}`,
         },
       })
 
@@ -69,7 +69,7 @@ export default function AuthForm() {
           email,
           password,
           options: {
-            emailRedirectTo: `${window.location.origin}${returnTo}`,
+            emailRedirectTo: `${window.location.origin}/auth/callback?return_to=${encodeURIComponent(returnTo)}`,
           }
         })
         
