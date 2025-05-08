@@ -12,7 +12,7 @@ from typing import Optional
 from supabase_client import supabase # Import the Supabase client
 from postgrest.exceptions import APIError # For Supabase errors
 
-from redis_client import redis_client, MEME_JOB_STREAM # Use the shared client
+from redis_client import redis_client, MEME_JOB_STREAM, REDIS_URL # Use the shared client
 
 # Load environment variables from the script's directory
 dotenv_path = os.path.join(os.path.dirname(__file__), '.env')
@@ -729,15 +729,27 @@ def process_new_job(redis_message_id: str, job_data_str: str):
         
         if not user_id:
              print(f"[WORKER_NEW_JOB][ERROR] Job data missing required 'user_id'. Message ID: {redis_message_id}") # Log error
-             raise ValueError("Job data missing required 'user_id'")
-        if not custom_job_id:
-             print(f"[WORKER_NEW_JOB][WARN] Custom job_id missing in job_data, using Redis message ID {redis_message_id} for status key.") # Log warning
-             custom_job_id = redis_message_id # Fallback
+             # Do not raise immediately, try to update status as 'error_parsing' if custom_job_id is available
+             if custom_job_id:
+                 update_job_status(custom_job_id, {"status": "error", "stage": "parsing_payload", "error_message": "Missing user_id"}, "SYSTEM_ERROR")
+             return # Exit if essential data is missing
 
-        # Initial status update
-        print(f"[WORKER_NEW_JOB] Attempting to write initial status for job {custom_job_id}: {{'status': 'processing', 'stage': 'starting', 'user_id': '{user_id}'}}") # Log status update
+        if not custom_job_id:
+             print(f"[WORKER_NEW_JOB][ERROR] Job data missing required 'job_id'. Message ID: {redis_message_id}") # Log error
+             # If job_id is missing, we can't reliably update status. Acknowledge and exit.
+             # update_job_status(redis_message_id, {"status": "error", "stage": "parsing_payload", "error_message": "Missing job_id"}, user_id if user_id else "SYSTEM_ERROR") # Cannot do this without job_id
+             return # Exit if essential data is missing
+
+        # --- BEGIN TEMPORARY DEBUGGING STATUS UPDATE ---
+        print(f"[WORKER_NEW_JOB][DEBUG] Attempting PRELIMINARY status update for job_id: {custom_job_id}")
+        update_job_status(custom_job_id, {"status": "received_by_worker", "stage": "initial_parse_complete", "redis_message_id": redis_message_id}, user_id)
+        print(f"[WORKER_NEW_JOB][DEBUG] PRELIMINARY status update for job_id: {custom_job_id} attempted.")
+        # --- END TEMPORARY DEBUGGING STATUS UPDATE ---
+
+        # Initial status update (this was the original one, now serves as a second update)
+        print(f"[WORKER_NEW_JOB] Attempting to write 'processing' status for job {custom_job_id}: {{'status': 'processing', 'stage': 'starting', 'user_id': '{user_id}'}}") # Log status update
         update_job_status(custom_job_id, {"status": "processing", "stage": "starting"}, user_id)
-        print(f"[WORKER_NEW_JOB] Successfully wrote initial status for job {custom_job_id}.") # Log success
+        print(f"[WORKER_NEW_JOB] Successfully wrote 'processing' status for job {custom_job_id}.") # Log success
         
         video_s3_key = job_data.get('video_s3_key') 
         avatar_s3_key = job_data.get('avatar_s3_key')
@@ -816,8 +828,10 @@ if __name__ == "__main__":
     print("Starting worker...")
     # Check Redis connection on startup
     try:
+        # Now REDIS_URL and MEME_JOB_STREAM are in scope
+        print(f"Worker attempting to connect to Redis at {REDIS_URL.replace('://', '://*:*@').split('@')[-1]} and listen to stream '{MEME_JOB_STREAM}'...")
         redis_client.ping()
-        print(f"Worker connected to Redis at {REDIS_URL}. Listening to stream '{MEME_JOB_STREAM}'...")
+        print(f"Worker successfully connected to Redis. Listening to stream '{MEME_JOB_STREAM}'.")
         
         # Debug: Check if stream exists and has entries
         try:
