@@ -1,0 +1,40 @@
+version: "3.9"
+services:
+  redis:
+    image: redis:7
+    ports: [ "6379:6379" ]
+    volumes:
+      - redis_data:/data
+
+  backend:
+    build: ./backend
+    env_file:
+      - ./backend/.env
+    ports: [ "8000:8000" ]
+    depends_on: [ redis ]
+    volumes:
+      - ./backend:/app # Mount backend code for live reload if uvicorn is configured for it
+
+  worker:
+    build: ./backend # Uses the same Dockerfile as the backend
+    env_file:
+      - ./backend/.env
+    command: python worker.py
+    depends_on: [ redis ]
+    volumes:
+      - ./backend:/app # Mount backend code for live reload if worker restarts on changes
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev # Assumes a Dockerfile.dev in frontend for development
+    env_file:
+      - ./frontend/.env.local
+    ports: [ "3000:3000" ]
+    volumes:
+      - ./frontend:/usr/src/app # Mount frontend code for live reload
+      - /usr/src/app/node_modules # Don't mount over node_modules in container
+      - /usr/src/app/.next # Don't mount over .next in container 
+
+volumes:
+  redis_data: # Persists Redis data across restarts 

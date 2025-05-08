@@ -73,6 +73,7 @@ class RegenerateScriptRequest(BaseModel):
 # --- CORS Configuration --- 
 origins = [
     "http://localhost:3000", # Allow your frontend origin
+    "https://YOUR_FRONTEND_DOMAIN", # <<<< TODO: REPLACE THIS WITH YOUR ACTUAL VERCEL DOMAIN
     # Add your deployed frontend origin here later, e.g.:
     # "https://your-app-domain.com", 
 ]
