@@ -715,7 +715,8 @@ def process_continue_job(redis_message_id: str, job_data: dict):
 
 def process_new_job(redis_message_id: str, job_data_str: str):
     """Processes the initial part of a job: Upload -> Script Gen -> Stop for Review."""
-    print(f"\n--- Processing NEW Job ID (Redis Msg ID): {redis_message_id} ---")
+    print(f"\n[WORKER_NEW_JOB] --- Starting to process NEW job from Redis Stream. Message ID: {redis_message_id} ---") # Log entry
+    print(f"[WORKER_NEW_JOB] Raw job_data_str from stream: {job_data_str}") # Log raw data
     custom_job_id = None 
     user_id = None
     thumbnail_url = None # Initialize thumbnail_url for the job scope
@@ -724,50 +725,65 @@ def process_new_job(redis_message_id: str, job_data_str: str):
         job_data = json.loads(job_data_str)
         user_id = job_data.get('user_id') # Use .get for safety
         custom_job_id = job_data.get('job_id') 
+        print(f"[WORKER_NEW_JOB] Parsed job_data. User ID: {user_id}, Custom Job ID: {custom_job_id}") # Log parsed IDs
         
         if not user_id:
+             print(f"[WORKER_NEW_JOB][ERROR] Job data missing required 'user_id'. Message ID: {redis_message_id}") # Log error
              raise ValueError("Job data missing required 'user_id'")
         if not custom_job_id:
-             print("[WARN] Custom job_id missing in job_data, using Redis message ID for status key.")
+             print(f"[WORKER_NEW_JOB][WARN] Custom job_id missing in job_data, using Redis message ID {redis_message_id} for status key.") # Log warning
              custom_job_id = redis_message_id # Fallback
 
         # Initial status update
+        print(f"[WORKER_NEW_JOB] Attempting to write initial status for job {custom_job_id}: {{'status': 'processing', 'stage': 'starting', 'user_id': '{user_id}'}}") # Log status update
         update_job_status(custom_job_id, {"status": "processing", "stage": "starting"}, user_id)
+        print(f"[WORKER_NEW_JOB] Successfully wrote initial status for job {custom_job_id}.") # Log success
         
         video_s3_key = job_data.get('video_s3_key') 
         avatar_s3_key = job_data.get('avatar_s3_key')
         
         if not avatar_s3_key:
+             print(f"[WORKER_NEW_JOB][ERROR] Job data for {custom_job_id} missing required 'avatar_s3_key'.") # Log error
              raise ValueError("Job data missing required 'avatar_s3_key'")
-        print(f"User ID: {user_id}, Video Key: {video_s3_key}, Avatar Key: {avatar_s3_key}")
+        print(f"[WORKER_NEW_JOB] Job {custom_job_id} details - User ID: {user_id}, Video Key: {video_s3_key}, Avatar Key: {avatar_s3_key}") # Log details
 
         # --- Pipeline Steps up to Script Generation --- 
         script = None
         summary = None # Initialize summary
         if video_s3_key:
             # 1. Summarize Video (includes thumbnail extraction)
+            print(f"[WORKER_NEW_JOB] Job {custom_job_id}: Starting video summarization.") # Log step
             update_job_status(custom_job_id, {"stage": "summarizing"})
             video_url = get_s3_presigned_url(AWS_S3_BUCKET_NAME, video_s3_key)
-            if not video_url: raise ValueError("Failed to get S3 presigned URL for input video.")
+            if not video_url: 
+                print(f"[WORKER_NEW_JOB][ERROR] Job {custom_job_id}: Failed to get S3 presigned URL for input video {video_s3_key}.") # Log error
+                raise ValueError("Failed to get S3 presigned URL for input video.")
             summary, thumbnail_url = call_twelve_labs_summarize(video_url, custom_job_id)
+            print(f"[WORKER_NEW_JOB] Job {custom_job_id}: Video summarization complete. Summary length: {len(summary) if summary else 0}") # Log step result
 
             # 2. Generate Script from Summary
+            print(f"[WORKER_NEW_JOB] Job {custom_job_id}: Starting script generation from summary.") # Log step
             update_job_status(custom_job_id, {"stage": "generating_script"})
             script = generate_script(summary, user_id)
+            print(f"[WORKER_NEW_JOB] Job {custom_job_id}: Script generation from summary complete. Script length: {len(script) if script else 0}") # Log step result
         else:
              # Avatar-only flow: Generate default script
-             print("[INFO] Video S3 key not provided. Generating default script.")
+             print(f"[WORKER_NEW_JOB][INFO] Job {custom_job_id}: Video S3 key not provided. Generating default script.") # Log info
              update_job_status(custom_job_id, {"stage": "generating_script"}) # Update stage
              script = "Hello from ReMerge AI! This video was generated using just an avatar." 
              thumbnail_url = None # No thumbnail for avatar-only
+             print(f"[WORKER_NEW_JOB] Job {custom_job_id}: Default script generated.") # Log step result
 
         # Moderate the generated script before showing to user
+        print(f"[WORKER_NEW_JOB] Job {custom_job_id}: Starting initial script moderation.") # Log step
         update_job_status(custom_job_id, {"stage": "moderating_initial_script"})
         if not moderate_text(script, user_id):
+             print(f"[WORKER_NEW_JOB][ERROR] Job {custom_job_id}: Initial script flagged by moderation.") # Log error
              raise RuntimeError("Initial script flagged by moderation.")
+        print(f"[WORKER_NEW_JOB] Job {custom_job_id}: Initial script moderation passed.") # Log step result
 
         # --- Stop for Review ---
-        print(f"Job {custom_job_id} paused for script review.")
+        print(f"[WORKER_NEW_JOB] Job {custom_job_id} paused for script review. Storing to Redis.") # Log step
         update_job_status(custom_job_id, {
             "status": "pending_review", 
             "stage": "script_ready_for_review",
@@ -777,15 +793,24 @@ def process_new_job(redis_message_id: str, job_data_str: str):
             "thumbnail_url": thumbnail_url if thumbnail_url else "", # Save optional thumbnail
             "summary": summary if summary else "" # Save summary for context if available
         }, user_id)
+        print(f"[WORKER_NEW_JOB] Job {custom_job_id}: Status updated to pending_review in Redis.") # Log step result
 
     except Exception as e:
         error_message = f"New Job failed: {type(e).__name__} - {str(e)}"
-        print(f"[ERROR] {error_message}")
-        job_id_for_status = custom_job_id if custom_job_id else redis_message_id
-        # Ensure user_id is available for failure update
-        fail_user_id = user_id if 'user_id' in locals() and user_id else None 
-        update_job_status(job_id_for_status, {"status": "failed", "error_message": str(e), "stage": "error"}, fail_user_id)
-        # Do not re-raise
+        # Ensure custom_job_id is defined for logging, even if parsing failed early
+        job_id_for_status_log = custom_job_id if custom_job_id else redis_message_id
+        print(f"[WORKER_NEW_JOB][ERROR] Processing for job {job_id_for_status_log} failed: {error_message}") # Log error
+        
+        # Log full traceback for better debugging
+        import traceback
+        print(f"[WORKER_NEW_JOB][TRACEBACK] for job {job_id_for_status_log}:")
+        print(traceback.format_exc())
+        
+        # Ensure user_id is available for failure update, even if parsing failed
+        fail_user_id = user_id if 'user_id' in locals() and user_id else None
+        update_job_status(job_id_for_status_log, {"status": "failed", "error_message": str(e), "stage": "error"}, fail_user_id)
+        print(f"[WORKER_NEW_JOB] Job {job_id_for_status_log} status updated to failed in Redis.") # Log error status update
+        # Do not re-raise, allow worker to acknowledge and continue
 
 if __name__ == "__main__":
     print("Starting worker...")

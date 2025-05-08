@@ -321,6 +321,7 @@ async def generate_meme(
     
     # 3. Prepare and Enqueue Job (including both keys)
     job_id = str(uuid.uuid4()) 
+    print(f"[GENERATE_MEME] Generated job_id: {job_id} for user {user_id}") # Log job_id creation
     job_data = {
         "job_id": job_id,
         "user_id": user_id,
@@ -332,17 +333,18 @@ async def generate_meme(
 
     try:
         redis_stream_id = redis_client.xadd(MEME_JOB_STREAM, {"job_data": json.dumps(job_data)})
-        print(f"Enqueued job {job_id} with Redis Stream ID: {redis_stream_id}")
+        print(f"[GENERATE_MEME] Enqueued job {job_id} to stream {MEME_JOB_STREAM} with Redis Stream ID: {redis_stream_id}") # Log enqueue
     except redis.exceptions.ConnectionError as e:
-         print(f"Redis Connection Error during enqueue: {e}")
+         print(f"[GENERATE_MEME] Redis Connection Error during enqueue for job {job_id}: {e}") # Log specific error
          # TODO: Implement credit refund logic here
          raise HTTPException(status_code=503, detail="Job queue unavailable.") 
     except Exception as e:
-        print(f"Error enqueuing job {job_id}: {e}")
+        print(f"[GENERATE_MEME] Error enqueuing job {job_id}: {e}") # Log specific error
         # TODO: Implement credit refund logic here
         raise HTTPException(status_code=500, detail="Failed to enqueue generation job.")
 
     # 4. Return Job ID
+    print(f"[GENERATE_MEME] Returning job_id: {job_id} to frontend.") # Log job_id return
     return {"job_id": job_id, "message": "Meme generation job queued successfully."} 
 
 # Note: Need to import get_current_active_user if it's used above
