@@ -609,32 +609,57 @@ async def get_subscription_status(user_id: str = Depends(get_current_user_id)):
 async def get_job_status(job_id: str, user_id: str = Depends(get_current_user_id)):
     """Fetches the status of a generation job from Redis."""
     status_key = f"job_status:{job_id}"
+    print(f"[DEBUG] Fetching status for job {job_id} using key {status_key}") # Add logging
     try:
         status_data_bytes = redis_client.hgetall(status_key)
-        
+        print(f"[DEBUG] Raw Redis response for {job_id}: {status_data_bytes}") # Add logging
+
         if not status_data_bytes:
-            # Could mean job doesn't exist, hasn't started, or expired
+            print(f"[WARN] Job {job_id} not found in Redis (key: {status_key}).") # Add logging
             raise HTTPException(status_code=404, detail="Job not found or status expired.")
-            
-        # Decode bytes → str for JSON response & comparisons
-        if isinstance(next(iter(status_data_bytes.values())), bytes):
-            status_data = {k.decode("utf-8"): v.decode("utf-8") for k, v in status_data_bytes.items()}
-        else:
-            status_data = status_data_bytes
 
-        # Optional: Verify user owns this job (requires user_id stored in status hash)
-        if status_data.get("user_id") and status_data.get("user_id") != user_id:
-            print(f"[AUTHZ ERROR] User {user_id} tried to access job {job_id} owned by {status_data.get('user_id')}")
-            raise HTTPException(status_code=403, detail="Not authorized to view this job status.")
+        status_data = {}
+        try:
+            # Decode bytes -> str safely
+            for k, v in status_data_bytes.items():
+                key_str = k.decode("utf-8") if isinstance(k, bytes) else str(k)
+                val_str = v.decode("utf-8") if isinstance(v, bytes) else str(v)
+                status_data[key_str] = val_str
+            print(f"[DEBUG] Decoded status data for {job_id}: {status_data}") # Add logging
+        except Exception as decode_err:
+            print(f"[ERROR] Failed to decode Redis hash for job {job_id}: {decode_err}") # Add logging
+            # If decoding fails, we can't proceed reliably
+            raise HTTPException(status_code=500, detail="Internal server error reading job status format.")
 
+        # Verify user owns this job
+        owner_user_id = status_data.get("user_id")
+        if owner_user_id and owner_user_id != user_id:
+             print(f"[AUTHZ ERROR] User {user_id} tried to access job {job_id} owned by {owner_user_id}") # Add logging
+             raise HTTPException(status_code=403, detail="Not authorized to view this job status.")
+        elif not owner_user_id:
+             # This case might be valid if user_id wasn't stored, but log it
+             print(f"[WARN] Job status for {job_id} does not contain a user_id field.") # Add logging
+             # Depending on requirements, you might allow access or deny it here.
+
+        print(f"[DEBUG] Returning status for job {job_id}: {status_data}") # Add logging
         return status_data
-        
-    except redis.exceptions.RedisError as e:
-        print(f"Redis error fetching status for job {job_id}: {e}")
-        raise HTTPException(status_code=503, detail="Status check unavailable.")
-    except Exception as e:
-        print(f"Unexpected error fetching status for job {job_id}: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error fetching job status.")
+
+    except redis.exceptions.ConnectionError as e: # Specific Redis connection errors
+        print(f"Redis Connection Error fetching status for job {job_id}: {e}") # Add logging
+        raise HTTPException(status_code=503, detail="Status check unavailable - Redis connection error.")
+    except redis.exceptions.RedisError as e: # Other Redis errors
+        print(f"Redis error fetching status for job {job_id}: {e}") # Add logging
+        raise HTTPException(status_code=503, detail="Status check unavailable - Redis error.")
+    except HTTPException as http_exc: # Re-raise HTTPExceptions
+        raise http_exc
+    except Exception as e: # Catch-all for other unexpected errors
+        # Log the full traceback for detailed debugging
+        import traceback
+        print(f"!!! Unexpected error in get_job_status for job {job_id} !!!")
+        print(traceback.format_exc())
+        print(f"!!! Error details: {e} !!!")
+        # The frontend sees this generic message
+        raise HTTPException(status_code=500, detail="Internal server error fetching job status.")\
 
 # --- Get Past Videos Endpoint --- 
 @app.get("/api/past-videos", response_model=PastVideosResponse)
