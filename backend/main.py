@@ -616,12 +616,18 @@ async def get_job_status(job_id: str, user_id: str = Depends(get_current_user_id
             # Could mean job doesn't exist, hasn't started, or expired
             raise HTTPException(status_code=404, detail="Job not found or status expired.")
             
-        # Optional: Verify user owns this job (requires user_id stored in status hash)
-        if status_data_bytes.get('user_id') != user_id:
-             print(f"[AUTHZ ERROR] User {user_id} tried to access job {job_id} owned by {status_data_bytes.get('user_id')}")
-             raise HTTPException(status_code=403, detail="Not authorized to view this job status.")
+        # Decode bytes → str for JSON response & comparisons
+        if isinstance(next(iter(status_data_bytes.values())), bytes):
+            status_data = {k.decode("utf-8"): v.decode("utf-8") for k, v in status_data_bytes.items()}
+        else:
+            status_data = status_data_bytes
 
-        return status_data_bytes
+        # Optional: Verify user owns this job (requires user_id stored in status hash)
+        if status_data.get("user_id") and status_data.get("user_id") != user_id:
+            print(f"[AUTHZ ERROR] User {user_id} tried to access job {job_id} owned by {status_data.get('user_id')}")
+            raise HTTPException(status_code=403, detail="Not authorized to view this job status.")
+
+        return status_data
         
     except redis.exceptions.RedisError as e:
         print(f"Redis error fetching status for job {job_id}: {e}")
