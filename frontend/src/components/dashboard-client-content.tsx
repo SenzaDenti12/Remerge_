@@ -355,7 +355,7 @@ export default function DashboardClientComponent() {
                                                     Watch
                                                 </Button>
                                             </a>
-                                            <a href={video.url} download>
+                                            <a href={video.url} download={`remerge-video-${video.id}.mp4`}>
                                                 <Button variant="outline" size="sm">
                                                     Download
                                                 </Button>
