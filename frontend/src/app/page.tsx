@@ -1,16 +1,23 @@
-import UserAuthUI from '@/components/user-auth-ui'
+'use client'; // Make this a client component to use the hook
+
 import { Button } from '@/components/ui/button'
 import Link from 'next/link'
 import { Card } from '@/components/ui/card'
-import { createClient } from '@/lib/supabase/server'
+import { useAuth } from '@/contexts/AuthContext'
+import UserAuthUI from '@/components/user-auth-ui'
 
-export default async function Home() {
-  // Check if user is authenticated
-  const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+export default function Home() {
+  // Use the hook to get auth status
+  const { user, isLoading } = useAuth();
   
   // Determine the destination for the "Start Creating" button
   const createButtonDestination = user ? '/dashboard' : '/login?return_to=/generate'
+  const createButtonText = user ? 'Go to Dashboard' : 'Start Creating for Free'
+
+  // Don't render the main content until auth status is known
+  if (isLoading) {
+    return <div className="text-center py-20">Loading...</div>; // Or a spinner
+  }
   
   return (
     <div className="flex flex-col items-center gap-16">
@@ -59,7 +66,7 @@ export default async function Home() {
           
           <div className="flex flex-col sm:flex-row gap-5 pt-4 justify-center lg:justify-start">
             <Link href={createButtonDestination}>
-              <Button variant="default" size="lg" className="px-8 py-6 text-lg">Start Creating for Free</Button>
+              <Button variant="default" size="lg" className="px-8 py-6 text-lg">{createButtonText}</Button>
             </Link>
             <Link href="/demo">
               <Button variant="outline" size="lg" className="px-8 py-6 text-lg">View Demo</Button>
@@ -73,12 +80,24 @@ export default async function Home() {
         </div>
         
         <div className="w-full max-w-lg relative">
-          <div className="absolute -inset-4 rounded-xl blur-xl opacity-30 -z-10 bg-gradient-to-br from-primary/40 via-accent/30 to-secondary/40"></div>
-          <Card className="relative overflow-hidden bg-card border-border p-2">
-            <div className="p-4 sm:p-8">
-              <UserAuthUI /> 
+          {!user ? (
+            <>
+              <div className="absolute -inset-4 rounded-xl blur-xl opacity-30 -z-10 bg-gradient-to-br from-primary/40 via-accent/30 to-secondary/40"></div>
+              <Card className="relative overflow-hidden bg-card border-border p-2">
+                <div className="p-4 sm:p-8">
+                  <UserAuthUI /> 
+                </div>
+              </Card>
+            </>
+          ) : (
+             <div className="mt-12 bg-secondary/10 border border-secondary/20 rounded-lg p-6 backdrop-blur-sm">
+              <h3 className="text-xl font-semibold mb-4">Welcome Back!</h3>
+              <p className="text-muted-foreground mb-4">Ready to create your next masterpiece?</p>
+              <Link href="/dashboard">
+                 <Button variant="default" size="lg">Go to Dashboard</Button>
+              </Link>
             </div>
-          </Card>
+          )}
           
           <div className="mt-12 bg-secondary/10 border border-secondary/20 rounded-lg p-6 backdrop-blur-sm">
             <h3 className="text-xl font-semibold mb-4">Perfect for Creators</h3>

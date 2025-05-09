@@ -381,124 +381,183 @@ async def stripe_webhook(request: Request, stripe_signature: Optional[str] = Hea
         raise HTTPException(status_code=500, detail="Webhook processing error")
 
     # Handle the event
-    print(f"Received Stripe event: {event['type']}")
+    print(f"[WEBHOOK] Received Stripe event ID: {event.id}, Type: {event.type}") # Log event ID and Type
 
     if event['type'] == 'checkout.session.completed':
         session = event['data']['object']
+        # Log the entire session object - CAUTION: Contains sensitive data, remove after debugging
+        # print(f"[WEBHOOK] Full session object: {json.dumps(session, indent=2)}") 
+        
         user_id = session.get('client_reference_id') # Our user ID
         stripe_customer_id = session.get('customer')
         stripe_subscription_id = session.get('subscription')
         checkout_session_id = session.get('id') # Get the session ID for logging
+        payment_status = session.get('payment_status')
+        
+        print(f"[WEBHOOK] Checkout Session ID: {checkout_session_id}, Payment Status: {payment_status}")
+        print(f"[WEBHOOK] Extracted client_reference_id (user_id): {user_id}")
+        print(f"[WEBHOOK] Extracted stripe_customer_id: {stripe_customer_id}")
+        print(f"[WEBHOOK] Extracted stripe_subscription_id: {stripe_subscription_id}")
 
         if not user_id:
-            print("[ERROR] checkout.session.completed missing client_reference_id! Cannot update user profile.")
-            return {"received": True}
+            print("[WEBHOOK][ERROR] checkout.session.completed missing client_reference_id! Cannot update user profile.")
+            # It's important to return 200 OK to Stripe even if we can't process,
+            # to prevent Stripe from retrying indefinitely for this specific error.
+            # We've logged it, and need to investigate why client_reference_id is missing.
+            return {"received_but_client_ref_missing": True}
         
-        print(f"Processing checkout completion for user_id: {user_id}, Session ID: {checkout_session_id}")
+        print(f"[WEBHOOK] Processing checkout.session.completed for user_id: {user_id}, Stripe Session ID: {checkout_session_id}")
 
-        # --- Simplified Price ID logic for CLI Testing ---        
-        price_id = None
+        # --- Determine Price ID and Credits ---
+        price_id_from_webhook = None
         credits_to_add = 0
         subscription_plan_name = "Unknown"
-
-        # Check if this looks like a test session from the CLI (IDs often start with cs_test_)
-        is_test_session = checkout_session_id and checkout_session_id.startswith('cs_test_')
-
-        if is_test_session:
-            # For CLI-triggered events, assume Creator plan for testing DB update logic
-            print("[INFO] Test session detected (CLI trigger?). Assuming Creator plan for DB update test.")
-            price_id = STRIPE_PRICE_ID_CREATOR 
-            credits_to_add = 10 # Credits for Creator
-            subscription_plan_name = "Creator"
-        else:
-            # For real events, attempt to retrieve the session to get the actual Price ID
+        
+        # Attempt to get line items directly from the event if available and payment was successful
+        # This is often more reliable than a separate retrieve if the webhook payload is complete.
+        if payment_status == "paid" and session.get('line_items') and session['line_items'].get('data'):
+            print("[WEBHOOK] Found line_items directly in webhook session data.")
             try:
-                print(f"Attempting Session.retrieve for real session {session.id}")
-                session_with_line_items = stripe.checkout.Session.retrieve(
-                    session.id,
-                    expand=["line_items"]
-                )
-                line_items = session_with_line_items.get('line_items')
-                if not line_items or not line_items.data:
-                    raise ValueError("Real checkout session missing line_items data after retrieve")
-                price_id = line_items.data[0].price.id
-                print(f"Retrieved Price ID {price_id} via Session.retrieve.")
-
-                # Determine credits based on real Price ID
-                if price_id == STRIPE_PRICE_ID_CREATOR:
-                    credits_to_add = 10 
-                    subscription_plan_name = "Creator"
-                elif price_id == STRIPE_PRICE_ID_PRO:
-                    credits_to_add = 30
-                    subscription_plan_name = "Pro"
-                elif price_id == STRIPE_PRICE_ID_GROWTH:
-                    credits_to_add = 90
-                    subscription_plan_name = "Growth"
+                price_id_from_webhook = session['line_items']['data'][0]['price']['id']
+                print(f"[WEBHOOK] Price ID from webhook line_items: {price_id_from_webhook}")
+            except (IndexError, KeyError, TypeError) as e:
+                print(f"[WEBHOOK][WARN] Could not extract price_id from webhook line_items: {e}")
+        
+        # Fallback or primary: Retrieve session with line_items if not directly available or for verification
+        if not price_id_from_webhook and payment_status == "paid":
+            print(f"[WEBHOOK] Price ID not in webhook or payment status not 'paid'. Attempting Session.retrieve for session {checkout_session_id}")
+            try:
+                # Ensure your Stripe API key is loaded for this call
+                if not stripe.api_key: # Should be set globally when stripe is imported if STRIPE_SECRET_KEY is in env
+                     print("[WEBHOOK][ERROR] Stripe API key not configured for Session.retrieve!")
+                     # Handle error appropriately - maybe don't try to update DB
                 else:
-                    print(f"[WARN] Unrecognized Price ID {price_id} for user {user_id}.")
-            
-            except (ValueError, stripe.error.StripeError) as e:
-                 print(f"[ERROR] Failed to retrieve real session or Price ID for {user_id}: {e}")
-                 # Cannot determine plan, maybe grant 0 credits or handle error?
-                 credits_to_add = 0 # Default to 0 if retrieve fails
-                 subscription_plan_name = "ErrorFetchingPlan"
+                    session_with_line_items = stripe.checkout.Session.retrieve(
+                        checkout_session_id, # Use the session ID from the webhook event
+                        expand=["line_items"]
+                    )
+                    line_items = session_with_line_items.get('line_items')
+                    if not line_items or not line_items.data:
+                        print(f"[WEBHOOK][WARN] Retrieved session {checkout_session_id} missing line_items data.")
+                    else:
+                        price_id_from_webhook = line_items.data[0].price.id
+                        print(f"[WEBHOOK] Price ID from retrieved session line_items: {price_id_from_webhook}")
+            except stripe.error.StripeError as e:
+                 print(f"[WEBHOOK][ERROR] Stripe API error retrieving session {checkout_session_id}: {e}")
+            except Exception as e:
+                 print(f"[WEBHOOK][ERROR] Unexpected error retrieving session {checkout_session_id}: {e}")
+        
+        if not price_id_from_webhook:
+            print(f"[WEBHOOK][ERROR] Could not determine Price ID for user {user_id} from session {checkout_session_id}. Cannot assign credits or plan.")
+            # Decide if we should still update stripe_customer_id and stripe_subscription_id if available
+            # For now, we will only proceed if we have a price_id to determine credits/plan.
+        else:
+            # Determine credits based on the determined Price ID
+            print(f"[WEBHOOK] Determining credits for Price ID: {price_id_from_webhook}")
+            if price_id_from_webhook == STRIPE_PRICE_ID_CREATOR:
+                credits_to_add = 10 
+                subscription_plan_name = "Creator"
+            elif price_id_from_webhook == STRIPE_PRICE_ID_PRO:
+                credits_to_add = 30
+                subscription_plan_name = "Pro"
+            elif price_id_from_webhook == STRIPE_PRICE_ID_GROWTH:
+                credits_to_add = 90
+                subscription_plan_name = "Growth"
+            else:
+                print(f"[WEBHOOK][WARN] Unrecognized Price ID {price_id_from_webhook} for user {user_id}. No credits will be added for this price_id.")
+                # Keep subscription_plan_name as "Unknown" or set to a special value
+                # credits_to_add remains 0
 
         # --- DB Update Logic ---     
-        print(f"[DEBUG] Webhook Data Extracted - User: {user_id}, Customer: {stripe_customer_id}, Sub: {stripe_subscription_id}, Price: {price_id}, Credits: {credits_to_add}, Plan: {subscription_plan_name}")
+        print(f"[WEBHOOK][DB_PREP] For User ID: {user_id}")
+        print(f"  - Stripe Customer ID: {stripe_customer_id}")
+        print(f"  - Stripe Subscription ID: {stripe_subscription_id}")
+        print(f"  - Determined Plan Name: {subscription_plan_name}")
+        print(f"  - Credits to Add: {credits_to_add}")
+        print(f"  - Final Price ID used for logic: {price_id_from_webhook}")
 
-        # If it was a test session and IDs are None, assign placeholders for DB update test
-        if is_test_session and stripe_customer_id is None:
-            stripe_customer_id = "cus_TESTFROMCLI"
-            print("[DEBUG] Assigning placeholder test customer ID.")
-        if is_test_session and stripe_subscription_id is None:
-            stripe_subscription_id = "sub_TESTFROMCLI"
-            print("[DEBUG] Assigning placeholder test subscription ID.")
+        # Prepare data for Supabase update.
+        # Only include fields that have actual values.
+        # Ensure credits are handled correctly (e.g., increment existing or set new).
+        # For simplicity, this example sets credits directly. Consider fetching existing credits and adding.
+        
+        update_payload = {}
+        if stripe_customer_id:
+            update_payload['stripe_customer_id'] = stripe_customer_id
+        if stripe_subscription_id:
+            update_payload['stripe_subscription_id'] = stripe_subscription_id
+        if subscription_plan_name != "Unknown": # Only update if a known plan was matched
+            update_payload['subscription_plan'] = subscription_plan_name
+            update_payload['subscription_status'] = 'active' # Assume active on checkout completion
+        
+        # Handle credits: Fetch current credits and add, or just set if that's the logic.
+        # This example just sets the credits_to_add if > 0.
+        # A more robust way is to fetch user's current credits and add to them.
+        if credits_to_add > 0:
+            # To add to existing credits:
+            # current_profile = supabase.table('profiles').select('credits').eq('id', user_id).maybe_single().execute()
+            # current_credits = current_profile.data.get('credits', 0) if current_profile.data else 0
+            # update_payload['credits'] = current_credits + credits_to_add
+            update_payload['credits'] = credits_to_add # Simplified: sets credits directly based on plan
 
-        if price_id: # Proceed only if we determined a price/credits somehow       
-            try: 
-                update_data = {
-                    'credits': credits_to_add,
-                    'stripe_customer_id': stripe_customer_id,
-                    'stripe_subscription_id': stripe_subscription_id,
-                    'subscription_plan': subscription_plan_name, 
-                    'subscription_status': 'active' 
-                }
-                # Log the data BEFORE filtering None values
-                print(f"[DEBUG] Update data before filtering: {update_data}") 
-                update_data = {k: v for k, v in update_data.items() if v is not None} 
-                print(f"[DEBUG] Update data AFTER filtering: {update_data}") # See what's left
-
-                if not update_data: # Check if anything is left to update
-                     print("[WARN] No data to update after filtering None values. Skipping DB call.")
-                     # Return success to Stripe as there's nothing to do, but log it.
-                     return {"received": True}
-
-                db_response = supabase.table('profiles').update(update_data).eq('id', user_id).execute()
-                
-                if not db_response.data and len(db_response.data) == 0:
-                    profile_check = supabase.table('profiles').select('id').eq('id', user_id).maybe_single().execute()
-                    if not profile_check.data:
-                        print(f"[ERROR] Profile for user {user_id} does not exist!")
-                    else:
-                        print(f"[ERROR] Failed to update profile for user {user_id}, response: {db_response}")
-                else:
-                    print(f"Successfully updated profile for user {user_id}.")
-            except APIError as e:
-                print(f"[ERROR] Supabase DB error updating profile for user {user_id}: {e}")
-                # Raise exception to potentially trigger Stripe retry?
-                raise HTTPException(status_code=500, detail=f"Webhook DB update failed: {e}")
+        if not update_payload:
+            print(f"[WEBHOOK][DB_UPDATE] No valid data to update in Supabase for user {user_id} from session {checkout_session_id}.")
         else:
-             print(f"[ERROR] Could not determine Price ID for user {user_id}. Skipping DB update.")
-    elif event['type'] == 'invoice.payment_failed':
-        print("Invoice payment failed event received.")
-        # TODO: Handle failed payment
-        pass
+            print(f"[WEBHOOK][DB_UPDATE] Attempting to update Supabase for user {user_id} with payload: {update_payload}")
+            try: 
+                db_response = supabase.table('profiles').update(update_payload).eq('id', user_id).execute()
+                
+                # Proper check for PostgREST response
+                if db_response.data: # Successful update typically returns a list with the updated record(s)
+                    print(f"[WEBHOOK][DB_SUCCESS] Successfully updated profile for user {user_id}. Response data: {db_response.data}")
+                else: # db_response.data might be empty list if RLS prevented update or record not found, or on error.
+                      # db_response.error will be set if there was a PostgREST error.
+                    if db_response.error:
+                        print(f"[WEBHOOK][DB_ERROR] Error from Supabase updating profile for user {user_id}: {db_response.error}")
+                        # Consider raising HTTPException here to make Stripe retry if it's a transient DB issue
+                    else:
+                        # This case means no data returned, no error object. Could be RLS or record not found.
+                        print(f"[WEBHOOK][DB_WARN] Supabase update for user {user_id} returned no data and no explicit error. Checking if profile exists...")
+                        profile_check = supabase.table('profiles').select('id').eq('id', user_id).maybe_single().execute()
+                        if not profile_check.data:
+                            print(f"[WEBHOOK][DB_ERROR] Profile for user {user_id} does not exist! Cannot update.")
+                        else:
+                            print(f"[WEBHOOK][DB_WARN] Profile for user {user_id} exists, but update returned no data. Possible RLS issue or data was identical?")
+                            
+            except APIError as e: # More specific PostgREST errors
+                print(f"[WEBHOOK][DB_API_ERROR] Supabase APIError updating profile for user {user_id}: {e}")
+                # Consider raising HTTPException to make Stripe retry
+                # raise HTTPException(status_code=500, detail=f"Webhook DB update APIError: {e}")
+            except Exception as e: # Catch any other unexpected errors during DB update
+                print(f"[WEBHOOK][DB_UNEXPECTED_ERROR] Unexpected error updating Supabase for user {user_id}: {e}")
+                # Consider raising HTTPException
+                # raise HTTPException(status_code=500, detail=f"Webhook DB update unexpected error: {e}")
+    
+    elif event['type'] == 'customer.subscription.updated':
+        print(f"[WEBHOOK] Received Stripe event: {event.type}")
+        # Handle subscription updates, e.g., plan changes, cancellations that are pending
+        # Extract necessary data from event['data']['object']
+        # Update your Supabase 'profiles' table accordingly
+        # Example:
+        # subscription = event['data']['object']
+        # stripe_customer_id = subscription.get('customer')
+        # status = subscription.get('status') # e.g., 'active', 'past_due', 'canceled'
+        # current_period_end = datetime.datetime.fromtimestamp(subscription.get('current_period_end')) if subscription.get('current_period_end') else None
+        # Find user by stripe_customer_id and update their subscription_status, plan, etc.
+        # print(f"[WEBHOOK] Subscription updated for customer {stripe_customer_id}, status: {status}, period_end: {current_period_end}")
+
     elif event['type'] == 'customer.subscription.deleted':
-        print("Subscription deleted event received.")
-        # TODO: Handle cancellation
-        pass
+        print(f"[WEBHOOK] Received Stripe event: {event.type}")
+        # Handle subscription cancellations immediately
+        # Extract stripe_customer_id from event['data']['object']
+        # Update your Supabase 'profiles' table: set subscription_status to 'canceled', clear plan, maybe set credits to 0 or a grace amount.
+        # subscription = event['data']['object']
+        # stripe_customer_id = subscription.get('customer')
+        # print(f"[WEBHOOK] Subscription deleted for customer {stripe_customer_id}. Update DB to reflect cancellation.")
+
+    # ... other event types like invoice.payment_succeeded, invoice.payment_failed ...
     else:
-        print(f"Unhandled event type {event['type']}")
+        print(f"[WEBHOOK] Unhandled event type: {event.type}")
 
     return {"received": True}
 
