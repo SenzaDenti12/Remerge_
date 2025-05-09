@@ -247,6 +247,29 @@ export default function DashboardClientComponent() {
   };
   // --- End Edit Title Handlers ---
 
+  const handleDownloadVideo = async (videoUrl: string, videoId: string) => {
+    try {
+      toast.info("Preparing download...", { duration: 2000 });
+      const response = await fetch(videoUrl, { credentials: 'omit' });
+      if (!response.ok) throw new Error('Failed to fetch video for download.');
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `remerge-video-${videoId || Date.now()}.mp4`;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      }, 100);
+      toast.success("Download started!");
+    } catch (err) {
+      console.error('Download error:', err);
+      toast.error("Failed to download video. Please try again.");
+    }
+  };
+
   return (
      <div className="space-y-12 content-container py-12 md:py-16">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 pb-6 border-b border-border">
@@ -355,11 +378,9 @@ export default function DashboardClientComponent() {
                                                     Watch
                                                 </Button>
                                             </a>
-                                            <a href={video.url} download={`remerge-video-${video.id}.mp4`}>
-                                                <Button variant="outline" size="sm">
-                                                    Download
-                                                </Button>
-                                            </a>
+                                            <Button variant="outline" size="sm" onClick={() => handleDownloadVideo(video.url, video.id)}>
+                                                Download
+                                            </Button>
                                         </div>
                                     </div>
                                 </div>

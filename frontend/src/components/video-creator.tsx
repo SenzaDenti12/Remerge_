@@ -686,14 +686,27 @@ export default function VideoCreator() {
   };
   
   // Handle video download
-  const handleDownloadVideo = () => {
-    if (resultVideoUrl) {
+  const handleDownloadVideo = async () => {
+    if (!resultVideoUrl) return;
+    try {
+      toast.info("Preparing download...", { duration: 2000 });
+      const response = await fetch(resultVideoUrl, { credentials: 'omit' });
+      if (!response.ok) throw new Error('Failed to fetch video for download.');
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = resultVideoUrl;
-      a.setAttribute('download', `remerge-video-${generatedJobId}.mp4`);
+      a.href = url;
+      a.download = `remerge-video-${generatedJobId || Date.now()}.mp4`;
       document.body.appendChild(a);
       a.click();
-      document.body.removeChild(a);
+      setTimeout(() => {
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      }, 100);
+      toast.success("Download started!");
+    } catch (err) {
+      console.error('Download error:', err);
+      toast.error("Failed to download video. Please try again.");
     }
   };
   
