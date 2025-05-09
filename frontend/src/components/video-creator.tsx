@@ -690,7 +690,7 @@ export default function VideoCreator() {
     if (resultVideoUrl) {
       const a = document.createElement('a');
       a.href = resultVideoUrl;
-      a.download = `remerge-video-${generatedJobId}.mp4`;
+      a.setAttribute('download', `remerge-video-${generatedJobId}.mp4`);
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
