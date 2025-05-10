@@ -173,7 +173,7 @@ export default function VideoCreator() {
         // Determine plan based on subscription data
         // This is a simplified approach - you might need to adjust based on your actual API response
         if (data.subscription?.plan) {
-          setUserPlan(data.subscription.plan);
+          setUserPlan(data.subscription.plan.toLowerCase());
         } else {
           // Default to free if no plan is specified
           setUserPlan("free");

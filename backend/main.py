@@ -258,27 +258,24 @@ async def ensure_user_profile(user_id: str, initial_credits: int = 1) -> None:
         profile_response = supabase.table('profiles').select('id, credits, subscription_status').eq('id', user_id).maybe_single().execute()
         
         if not profile_response.data:
-            # Create new profile with initial credits
-            print(f"[USER_SETUP] Creating new profile for user {user_id} with {initial_credits} credit")
+            # Create new profile with initial credits (always 1)
+            print(f"[USER_SETUP] Creating new profile for user {user_id} with 1 credit")
             supabase.table('profiles').insert({
                 'id': user_id,
-                'credits': initial_credits,
+                'credits': 1,
                 'subscription_status': 'free'
             }).execute()
         else:
             print(f"[USER_SETUP] Profile exists for user {user_id}")
-            
             # Get current credits
             current_credits = profile_response.data.get('credits')
             subscription_status = profile_response.data.get('subscription_status')
-            
-            # Check if this is a free account with exactly 3 credits (the old default)
+            # If this is a free account with exactly 3 credits (the old default), update to 1
             if current_credits == 3 and (not subscription_status or subscription_status == 'free'):
                 print(f"[USER_SETUP] Updating user {user_id} from 3 credits to 1 credit (fixing old default)")
                 supabase.table('profiles').update({
-                    'credits': initial_credits
+                    'credits': 1
                 }).eq('id', user_id).execute()
-            
     except Exception as e:
         print(f"[ERROR] Error ensuring user profile for {user_id}: {e}")
         # Don't raise exception, just log it - this is a background operation
