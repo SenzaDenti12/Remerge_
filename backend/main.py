@@ -236,9 +236,16 @@ async def get_user_credits(user_id: str) -> int:
 
 @app.get("/api/credits")
 async def get_credits_endpoint(user_id: str = Depends(get_current_user_id)):
-    """Fetches the current user's credits."""
+    """Fetches the current user's credits and plan."""
     credits = await get_user_credits(user_id)
-    return {"credits": credits}
+    # Fetch plan
+    try:
+        response = supabase.table('profiles').select('subscription_plan').eq('id', user_id).maybe_single().execute()
+        plan = (response.data or {}).get('subscription_plan', 'free')
+    except Exception as e:
+        print(f"[CREDITS] Error fetching plan for user {user_id}: {e}")
+        plan = 'free'
+    return {"credits": credits, "subscription": {"plan": plan}}
 
 # --- Setup New User Profile ---
 async def ensure_user_profile(user_id: str, initial_credits: int = 1) -> None:
