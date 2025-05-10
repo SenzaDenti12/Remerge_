@@ -39,6 +39,7 @@ class UploadURLRequest(BaseModel):
 class GenerateMemeRequest(BaseModel):
     avatar_s3_key: str # Avatar is mandatory
     video_s3_key: Optional[str] = None # Video is optional for now
+    manual_script_mode: bool = False  # <-- Add this line
     # user_script: Optional[str] = None # Add later if needed
 
 class CheckoutSessionRequest(BaseModel):
