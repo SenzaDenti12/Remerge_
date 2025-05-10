@@ -747,6 +747,7 @@ def process_new_job(redis_message_id: str, job_data_str: str):
         video_s3_key = job_data.get('video_s3_key') 
         avatar_s3_key = job_data.get('avatar_s3_key')
         manual_script_mode = job_data.get('manual_script_mode', False)
+        print(f"[WORKER_NEW_JOB] manual_script_mode: {manual_script_mode} (type: {type(manual_script_mode)})")
         
         if not avatar_s3_key:
              print(f"[WORKER_NEW_JOB][ERROR] Job data for {custom_job_id} missing required 'avatar_s3_key'.") # Log error

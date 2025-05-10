@@ -308,6 +308,7 @@ async def generate_meme(
     avatar_s3_key = request_data.avatar_s3_key
     video_s3_key = request_data.video_s3_key 
     manual_script_mode = getattr(request_data, 'manual_script_mode', False)
+    print(f"[API] Received manual_script_mode: {manual_script_mode} (type: {type(manual_script_mode)})")
 
     # 1. Prepare and Enqueue Job (including both keys)
     job_id = str(uuid.uuid4()) 

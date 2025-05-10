@@ -548,6 +548,7 @@ export default function VideoCreator() {
   
   // Handle generation start
   const handleStartGeneration = async (manual = false) => {
+    console.log("handleStartGeneration called with manual:", manual);
     if (!uploadedAvatarKey) {
       toast.error("Please upload a portrait image first.");
       return;
@@ -591,17 +592,19 @@ export default function VideoCreator() {
       setActiveStep(manual ? "review" : "generating");
       stopPolling();
       
+      const body = {
+        avatar_s3_key: uploadedAvatarKey,
+        video_s3_key: uploadedVideoKey,
+        manual_script_mode: !!manual // Always send boolean
+      };
+      console.log("Sending job data to backend:", body);
       const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_API_URL}/api/generate-meme`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({
-          avatar_s3_key: uploadedAvatarKey,
-          video_s3_key: uploadedVideoKey,
-          manual_script_mode: !!manual // Always send boolean
-        })
+        body: JSON.stringify(body)
       });
       
       if (!response.ok) {
