@@ -667,12 +667,7 @@ def process_continue_job(redis_message_id: str, job_data: dict):
         print(f"Using Script: {script[:100]}...")
 
         # --- Start processing from Moderation/Lip Sync ---
-        
-        # Moderate the final script
-        update_job_status(custom_job_id, {"stage": "moderating_final_script"})
-        if not moderate_text(script, user_id):
-            raise RuntimeError("Final script flagged by moderation.")
-
+        # Remove script moderation
         # Deduct credit right before calling LemonSlice
         def get_user_credits(user_id):
             response = supabase.table('profiles').select('credits').eq('id', user_id).maybe_single().execute()
@@ -685,7 +680,6 @@ def process_continue_job(redis_message_id: str, job_data: dict):
         # Deduct credit
         supabase.table('profiles').update({'credits': current_credits - 1}).eq('id', user_id).execute()
         print(f"[WORKER][CREDITS] Deducted 1 credit from user {user_id} for job {custom_job_id}.")
-
         # Lip Sync (Lemon Slice) - Pass voice_id
         update_job_status(custom_job_id, {"stage": "lip_syncing"})
         lemon_slice_video_url = call_lemon_slice(avatar_s3_key, script, voice_id)
@@ -803,27 +797,18 @@ def process_new_job(redis_message_id: str, job_data_str: str):
                 raise ValueError("Failed to get S3 presigned URL for input video.")
             summary, thumbnail_url = call_twelve_labs_summarize(video_url, custom_job_id)
             print(f"[WORKER_NEW_JOB] Job {custom_job_id}: Video summarization complete. Summary length: {len(summary) if summary else 0}") # Log step result
-
             # 2. Generate Script from Summary
             print(f"[WORKER_NEW_JOB] Job {custom_job_id}: Starting script generation from summary.") # Log step
             update_job_status(custom_job_id, {"stage": "generating_script"})
             script = generate_script(summary, user_id)
             print(f"[WORKER_NEW_JOB] Job {custom_job_id}: Script generation from summary complete. Script length: {len(script) if script else 0}") # Log step result
         else:
-             # Avatar-only flow: Generate default script
-             print(f"[WORKER_NEW_JOB][INFO] Job {custom_job_id}: Video S3 key not provided. Generating default script.") # Log info
-             update_job_status(custom_job_id, {"stage": "generating_script"}) # Update stage
-             script = "Hello from ReMerge AI! This video was generated using just an avatar."
-             thumbnail_url = None # No thumbnail for avatar-only
-             print(f"[WORKER_NEW_JOB] Job {custom_job_id}: Default script generated.") # Log step result
-
-        # Moderate the generated script before showing to user
-        print(f"[WORKER_NEW_JOB] Job {custom_job_id}: Starting initial script moderation.") # Log step
-        update_job_status(custom_job_id, {"stage": "moderating_initial_script"})
-        if not moderate_text(script, user_id):
-             print(f"[WORKER_NEW_JOB][ERROR] Job {custom_job_id}: Initial script flagged by moderation.") # Log error
-             raise RuntimeError("Initial script flagged by moderation.")
-        print(f"[WORKER_NEW_JOB] Job {custom_job_id}: Initial script moderation passed.") # Log step result
+            # Avatar-only flow: Generate default script
+            print(f"[WORKER_NEW_JOB][INFO] Job {custom_job_id}: Video S3 key not provided. Generating default script.") # Log info
+            update_job_status(custom_job_id, {"stage": "generating_script"}) # Update stage
+            script = "Hello from ReMerge AI! This video was generated using just an avatar."
+            thumbnail_url = None # No thumbnail for avatar-only
+            print(f"[WORKER_NEW_JOB] Job {custom_job_id}: Default script generated.") # Log step result
 
         # --- Stop for Review ---
         print(f"[WORKER_NEW_JOB] Job {custom_job_id} paused for script review. Storing to Redis.") # Log step
