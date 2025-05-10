@@ -216,20 +216,18 @@ export default function VideoCreator() {
         toast.error("Portrait image must be 5MB or less.");
         return;
       }
-      // Check resolution and aspect ratio
+      // Check resolution and aspect ratio (warn only, do not block)
       const img = new window.Image();
       img.onload = () => {
         if (
           img.width < 256 || img.height < 256 ||
           img.width > 1024 || img.height > 1024
         ) {
-          toast.error("Portrait image must be between 256x256 and 1024x1024 pixels.");
-          return;
+          toast.warning("Portrait image is outside the recommended size (256x256 to 1024x1024 pixels). It may not work as well.");
         }
         const aspect = img.width / img.height;
         if (aspect < 0.95 || aspect > 1.05) {
-          toast.error("Portrait image should be square (1:1 aspect ratio) for best results.");
-          // Allow, but warn
+          toast.warning("Portrait image is not square (1:1 aspect ratio recommended) and may not work as well.");
         }
         setAvatarFile(selectedFile);
         setUploadedAvatarKey(null);
