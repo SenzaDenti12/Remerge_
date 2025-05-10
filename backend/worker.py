@@ -673,13 +673,21 @@ def process_continue_job(redis_message_id: str, job_data: dict):
         if not moderate_text(script, user_id):
             raise RuntimeError("Final script flagged by moderation.")
 
-        # Enforce 600 char limit for script
-        if len(script) > 600:
-            print(f"[WARN] Script text exceeds 600 characters in process_continue_job. Truncating.")
-            script = script[:600]
+        # Deduct credit right before calling LemonSlice
+        def get_user_credits(user_id):
+            response = supabase.table('profiles').select('credits').eq('id', user_id).maybe_single().execute()
+            return response.data.get('credits', 0) if response.data else 0
+        current_credits = get_user_credits(user_id)
+        if current_credits <= 0:
+            update_job_status(custom_job_id, {"status": "failed", "error_message": "Insufficient credits.", "stage": "error"}, user_id)
+            print(f"[WORKER][CREDITS] User {user_id} has insufficient credits. Job {custom_job_id} failed.")
+            return
+        # Deduct credit
+        supabase.table('profiles').update({'credits': current_credits - 1}).eq('id', user_id).execute()
+        print(f"[WORKER][CREDITS] Deducted 1 credit from user {user_id} for job {custom_job_id}.")
+
         # Lip Sync (Lemon Slice) - Pass voice_id
         update_job_status(custom_job_id, {"stage": "lip_syncing"})
-        # Pass custom_job_id and user_id to call_lemon_slice for progress updates (needs modification)
         lemon_slice_video_url = call_lemon_slice(avatar_s3_key, script, voice_id)
         
         # Render Final Video (Creatomate)

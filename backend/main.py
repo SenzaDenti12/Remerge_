@@ -302,33 +302,14 @@ async def generate_meme(
     """
     Trigger the meme generation pipeline.
     Requires avatar_s3_key, optionally video_s3_key.
-    Checks credits, deducts 1, enqueues job.
+    Enqueues job. Credits are now deducted in the worker, not here.
     """
     # Extract keys from the request body model
     avatar_s3_key = request_data.avatar_s3_key
     video_s3_key = request_data.video_s3_key 
+    manual_script_mode = getattr(request_data, 'manual_script_mode', False)
 
-    # 1. Check Credits (using helper function)
-    current_credits = await get_user_credits(user_id)
-    if current_credits <= 0:
-        raise HTTPException(status_code=402, detail="Insufficient credits.") 
-
-    # 2. Deduct Credit (using simple update - consider RPC for production)
-    try:
-        update_response = supabase.table('profiles')\
-            .update({'credits': current_credits - 1})\
-            .eq('id', user_id)\
-            .execute()
-        if not update_response.data:
-             raise HTTPException(status_code=500, detail="Failed to update credit balance.")
-    except APIError as e:
-        print(f"Supabase API Error deducting credit for user {user_id}: {e}")
-        raise HTTPException(status_code=500, detail="Database error updating credits.")
-    except Exception as e:
-        print(f"Error deducting credit for user {user_id}: {e}")
-        raise HTTPException(status_code=500, detail="Could not update credit balance.")
-    
-    # 3. Prepare and Enqueue Job (including both keys)
+    # 1. Prepare and Enqueue Job (including both keys)
     job_id = str(uuid.uuid4()) 
     print(f"[GENERATE_MEME] Generated job_id: {job_id} for user {user_id}") # Log job_id creation
     job_data = {
@@ -336,6 +317,7 @@ async def generate_meme(
         "user_id": user_id,
         "avatar_s3_key": avatar_s3_key, # Mandatory avatar key
         "video_s3_key": video_s3_key, # Optional video key
+        "manual_script_mode": manual_script_mode,
         "status": "queued",
         # Add other params as needed
     }
@@ -345,14 +327,12 @@ async def generate_meme(
         print(f"[GENERATE_MEME] Enqueued job {job_id} to stream {MEME_JOB_STREAM} with Redis Stream ID: {redis_stream_id}") # Log enqueue
     except redis.exceptions.ConnectionError as e:
          print(f"[GENERATE_MEME] Redis Connection Error during enqueue for job {job_id}: {e}") # Log specific error
-         # TODO: Implement credit refund logic here
          raise HTTPException(status_code=503, detail="Job queue unavailable.") 
     except Exception as e:
         print(f"[GENERATE_MEME] Error enqueuing job {job_id}: {e}") # Log specific error
-        # TODO: Implement credit refund logic here
         raise HTTPException(status_code=500, detail="Failed to enqueue generation job.")
 
-    # 4. Return Job ID
+    # 2. Return Job ID
     print(f"[GENERATE_MEME] Returning job_id: {job_id} to frontend.") # Log job_id return
     return {"job_id": job_id, "message": "Meme generation job queued successfully."} 
 

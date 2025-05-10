@@ -1095,34 +1095,38 @@ export default function VideoCreator() {
               
               {/* Credits Display */}
               <div className="col-span-1 lg:col-span-2 mt-4">
-                <div className="flex flex-col md:flex-row gap-4 items-center justify-between border-2 border-border p-4 rounded-md bg-card/70">
-                  <div className="flex-1">
-                    <h3 className="text-lg font-medium">How do you want to create your script?</h3>
-                    <p className="text-sm text-muted-foreground mt-1">Choose to auto-generate a script by analyzing your video, or skip analysis and write your own script (or use AI to help).</p>
-                  </div>
-                  <div className="flex flex-col md:flex-row gap-2 mt-4 md:mt-0">
-                    <Button
-                      onClick={() => handleStartGeneration(false)}
-                      disabled={!uploadedAvatarKey || isGenerating}
-                      size="lg"
-                      className="bg-gradient-primary hover:bg-gradient-primary-hover"
-                    >
-                      <span className="flex flex-col items-center gap-1">
-                        <span>Auto Generate Script</span>
-                        <span className="text-xs font-normal text-muted-foreground">Analyzes your video and generates a script (may take longer)</span>
-                      </span>
-                    </Button>
-                    <Button
-                      onClick={() => handleStartGeneration(true)}
-                      disabled={!uploadedAvatarKey || isGenerating}
-                      size="lg"
-                      variant="outline"
-                    >
-                      <span className="flex flex-col items-center gap-1">
-                        <span>Create Script Manually</span>
-                        <span className="text-xs font-normal text-muted-foreground">Skip video analysis and write your own script (or use AI to help)</span>
-                      </span>
-                    </Button>
+                <div className="flex flex-col items-center justify-center gap-6">
+                  <h3 className="text-lg font-semibold mb-2">How do you want to create your script?</h3>
+                  <div className="flex flex-col md:flex-row gap-6 w-full max-w-2xl">
+                    <div className="flex-1">
+                      <div className="border-2 border-primary/40 rounded-xl p-6 bg-card/80 flex flex-col items-center shadow-md hover:shadow-lg transition-shadow">
+                        <span className="text-xl font-bold mb-2">Auto Generate Script</span>
+                        <p className="text-sm text-muted-foreground mb-4 text-center">Analyzes your video and generates a script (may take longer)</p>
+                        <Button
+                          onClick={() => handleStartGeneration(false)}
+                          disabled={!uploadedAvatarKey || isGenerating}
+                          size="lg"
+                          className="w-full"
+                        >
+                          Auto Generate Script
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="flex-1">
+                      <div className="border-2 border-border rounded-xl p-6 bg-card/80 flex flex-col items-center shadow-md hover:shadow-lg transition-shadow">
+                        <span className="text-xl font-bold mb-2">Create Script Manually</span>
+                        <p className="text-sm text-muted-foreground mb-4 text-center">Skip video analysis and write your own script (or use AI to help)</p>
+                        <Button
+                          onClick={() => handleStartGeneration(true)}
+                          disabled={!uploadedAvatarKey || isGenerating}
+                          size="lg"
+                          variant="outline"
+                          className="w-full"
+                        >
+                          Create Script Manually
+                        </Button>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
