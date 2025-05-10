@@ -894,8 +894,8 @@ if __name__ == "__main__":
             if not response:
                 # Check for pending jobs (delivered but not acknowledged)
                 pending = redis_client.xpending(MEME_JOB_STREAM, group_name)
-                if pending and pending[0] > 0:  # Check if count > 0
-                    print(f"[DEBUG] {pending[0]} pending jobs found. Oldest: {pending[1]}, newest: {pending[2]}")
+                if pending and isinstance(pending, dict) and pending.get('count', 0) > 0:
+                    print(f"[DEBUG] {pending['count']} pending jobs found. Oldest: {pending.get('min')}, newest: {pending.get('max')}")
                 continue
 
             # Response format: [[stream_name, [[message_id, {field: value}]]]]
