@@ -820,6 +820,7 @@ async def continue_generation(
     Continues a generation job after script review.
     Requires the final script and optionally a voice_id.
     Verifies user ownership and job status before enqueuing 'continue' task.
+    Enforces voice access rules based on user's plan.
     """
     status_key = f"job_status:{job_id}"
     try:
@@ -827,7 +828,6 @@ async def continue_generation(
         status_data_bytes = redis_client.hgetall(status_key)
         if not status_data_bytes:
             raise HTTPException(status_code=404, detail="Job not found or status expired.")
-            
         # Check if values are bytes and decode if necessary
         if isinstance(next(iter(status_data_bytes.values())), bytes):
             status_data = {k.decode('utf-8'): v.decode('utf-8') for k, v in status_data_bytes.items()}
@@ -838,12 +838,62 @@ async def continue_generation(
         if status_data.get('user_id') != user_id:
              print(f"[AUTHZ ERROR] User {user_id} tried to continue job {job_id} owned by {status_data.get('user_id')}")
              raise HTTPException(status_code=403, detail="Not authorized to continue this job.")
-        
         if status_data.get('status') != 'pending_review':
             current_status = status_data.get('status', 'unknown')
             raise HTTPException(status_code=400, detail=f"Job is not awaiting review (current status: {current_status}).")
 
-        # 3. Prepare and Enqueue 'continue' Job
+        # 3. ENFORCE VOICE ACCESS RULES
+        # --- Voice ID lists (from frontend) ---
+        BASIC_VOICES = {
+            "ZRwrL4id6j1HPGFkeCzO", # Sam - American male (Default)
+            "NFG5qt843uXKj4pFvR7C", # Adam - British male
+            "CBHdTdZwkV4jYoCyMV1B", # African American - Female
+            "gYr8yTP0q4RkX1HnzQfX", # African American - Male
+            "LXVY607YcjqxFS3mcult", # Alex - Male
+            "ZF6FPAbjXT4488VcRRnw", # Amelia - British female
+        }
+        CREATOR_VOICES = BASIC_VOICES | {
+            "ZkXXWlhJO3CtSXof2ujN", # Ava - American female
+            "JBFqnCBsd6RMkjVDRZzb", # George - British male
+            "i4CzbCVWoqvD0P1QJCUL", # Ivy - American female
+            "7p1Ofvcwsv7UBPoFNcpI", # Julian - British male
+            "JEAgwU0JZFGxl2KjC3if", # Maribeth - American female
+            "FMQtISLdv5RvjpHBgf60", # Neil - British male
+            "hKUnzqLzU3P9IVhYHREu", # Tex - American male
+            "rCuVrCHOUMY3OwyJBJym", # Mia - Raspy American female
+            "LtPsVjX1k0Kl4StEMZPK", # Sophia - Female
+            "luVEyhT3CocLZaLBps8v", # Vivian - Australian Female
+        }
+        PREMIUM_VOICES = CREATOR_VOICES | {
+            "41534e16-2966-4c6b-9670-111411def906", # 1920s Radioman
+            "NYC9WEgkq1u4jiqBseQ9", # Announcer - British man
+            "L0Dsvb3SLTyegXwtm47J", # Archer - British male
+            "kPzsL2i3teMYv0FxEYQ6", "PDJZDHevWkwdKwWFKj34", "ngiiW8FFLIdMew1cqwSB", "gAMZphRyrWJnLMDnom6H", "qNkzaJoHLLdpvgh5tISm", "FVQMzxJGPUBtfz1Azdoy", "L5Oo1OjjHdbIvJDQFgmN", "vfaqCOvlrKi4Zp7C2IAm", "eVItLK1UvXctxuaRV2Oq", "txtf1EDouKke753vN8SL", "IHngRooVccHyPqB4uQkG", "AnvlJBAqSLDzEevYr9Ap", "NOpBlnGInO9m6vDvFkFC", "c99d36f3-5ffd-4253-803a-535c1bc9c306", "BY77WcifAQZkoI7EftFd", "siw1N9V8LmYeEWKyWBxv", "BZc8d1MPTdZkyGbE9Sin", "t3hJ92dgZhDVtsff084B", "pO3rCaEbT3xVc0h3pPoG", "cccc21e8-5bcf-4ff0-bc7f-be4e40afc544", "50d6beb4-80ea-4802-8387-6c948fe84208", "A8rwEcJwudjohY1gjPfa", "236bb1fb-dc41-4a2b-84d6-d22d2a2aaae1", "JoYo65swyP8hH6fVMeTO", "224126de-034c-429b-9fde-71031fba9a59", "8f091740-3df1-4795-8bd9-dc62d88e5131", "185c2177-de10-4848-9c0a-ae6315ac1493", "gbLy9ep70G3JW53cTzFC", "LT7npgnEogysurF7U8GR", "bf0a246a-8642-498a-9950-80c35e9276b5", "sTgjlXyTKe3nwbzzjDAZ", "d7862948-75c3-4c7c-ae28-2959fe166f49", "bn5HJAJ1igu4dFplCXkQ", "mLJVsC2pwqCmmrBUAzg6", "flHkNRp1BlvT73UL6gyz", "INDKfphIpZiLCUiXae4o", "nbk2esDn4RRk4cVDdoiE"
+        }
+
+        # 4. Fetch user's plan from Supabase
+        try:
+            profile_response = supabase.table('profiles').select('subscription_plan').eq('id', user_id).maybe_single().execute()
+            plan = (profile_response.data or {}).get('subscription_plan', 'free')
+            plan = (plan or 'free').lower()
+        except Exception as e:
+            print(f"[VOICE PLAN] Error fetching user plan for {user_id}: {e}")
+            plan = 'free'
+
+        # 5. Determine allowed voices
+        allowed_voices = BASIC_VOICES
+        if plan == 'creator':
+            allowed_voices = CREATOR_VOICES
+        elif plan in ('pro', 'growth'):
+            allowed_voices = PREMIUM_VOICES
+
+        # 6. Validate requested voice_id
+        requested_voice_id = request_data.voice_id
+        if requested_voice_id and requested_voice_id not in allowed_voices:
+            print(f"[VOICE PLAN] User {user_id} with plan '{plan}' tried to use forbidden voice_id: {requested_voice_id}")
+            raise HTTPException(status_code=403, detail="Your plan does not allow this voice. Please upgrade to access more voices.")
+
+        # 7. Prepare and Enqueue 'continue' Job
         continue_job_data = {
             "job_id": job_id, # Pass the original job ID
             "user_id": user_id, # Include user ID for worker context
@@ -856,23 +906,17 @@ async def continue_generation(
              "job_type": "continue",
              "job_data": json.dumps(continue_job_data)
         }
-        
         # Update status immediately to prevent double-continuation
         update_job_status(job_id, {"status": "processing", "stage": "continuation_triggered"}, user_id)
-
         redis_stream_id = redis_client.xadd(MEME_JOB_STREAM, message_payload)
         print(f"Enqueued 'continue' job {job_id} with Redis Stream ID: {redis_stream_id}")
-
         return {"message": "Generation continuation job queued successfully.", "job_id": job_id}
-
     except redis.exceptions.RedisError as e:
         print(f"Redis error continuing job {job_id}: {e}")
-        # Revert status? Difficult state management. For now, report error.
         update_job_status(job_id, {"status": "failed", "error_message": "Failed to queue continuation task.", "stage": "error"}, user_id)
         raise HTTPException(status_code=503, detail="Job queue unavailable.")
     except Exception as e:
         print(f"Unexpected error continuing job {job_id}: {e}")
-        # Revert status?
         update_job_status(job_id, {"status": "failed", "error_message": f"Internal error: {e}", "stage": "error"}, user_id)
         raise HTTPException(status_code=500, detail="Internal server error continuing job.")
 
