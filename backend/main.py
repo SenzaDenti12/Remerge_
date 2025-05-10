@@ -34,6 +34,7 @@ class UploadURLRequest(BaseModel):
     filename: str
     content_type: str
     upload_type: str = 'video' # Add type: 'video' or 'avatar'
+    duration: Optional[float] = None # Add duration in seconds
 
 class GenerateMemeRequest(BaseModel):
     avatar_s3_key: str # Avatar is mandatory
@@ -154,11 +155,13 @@ async def read_my_id(user_id: str = Depends(get_current_user_id)):
 async def create_upload_url(request_body: UploadURLRequest, user_id: str = Depends(get_current_user_id)):
     """
     Generates a presigned URL for uploading either a video or avatar image.
-    Requires filename, content_type, and upload_type ('video' or 'avatar') in body.
+    Requires filename, content_type, upload_type ('video' or 'avatar'), and (for video) duration in seconds in body.
     """
     filename = request_body.filename
     content_type = request_body.content_type
     upload_type = request_body.upload_type
+    # Optionally get duration from request_body if present
+    duration = getattr(request_body, 'duration', None)
 
     if upload_type not in ['video', 'avatar']:
         raise HTTPException(status_code=400, detail="Invalid upload_type. Must be 'video' or 'avatar'.")
@@ -171,13 +174,14 @@ async def create_upload_url(request_body: UploadURLRequest, user_id: str = Depen
 
     # Define allowed types and size based on upload_type
     if upload_type == 'video':
-        # allowed_content_types = ["video/mp4", "video/quicktime", ...]
-        max_size_bytes = 50 * 1024 * 1024 # 50MB
-        # Add content type validation if needed
-        # if content_type not in allowed_content_types:
-        #    raise HTTPException(status_code=400, detail=f"Unsupported video type: {content_type}")
+        allowed_content_types = ["video/mp4", "video/quicktime", "video/webm", "video/mov"]
+        max_size_bytes = 100 * 1024 * 1024 # 100MB
+        if content_type not in allowed_content_types:
+            raise HTTPException(status_code=400, detail=f"Unsupported video type: {content_type}")
+        if duration is not None and duration > 60:
+            raise HTTPException(status_code=400, detail="Video must be 1 minute or less.")
     elif upload_type == 'avatar':
-        allowed_content_types = ["image/jpeg", "image/png", "image/gif", "image/webp"]
+        allowed_content_types = ["image/jpeg", "image/png", "image/webp"]
         max_size_bytes = 5 * 1024 * 1024 # 5MB
         if content_type not in allowed_content_types:
            raise HTTPException(status_code=400, detail=f"Unsupported avatar image type: {content_type}")

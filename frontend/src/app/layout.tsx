@@ -34,7 +34,7 @@ export default function RootLayout({
       >
         <AuthProvider>
           <ClientLayout>
-            {children}
+        {children}
           </ClientLayout>
         </AuthProvider>
         <Toaster theme="dark" position="top-center" richColors closeButton />

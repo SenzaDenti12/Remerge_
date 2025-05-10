@@ -30,19 +30,23 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
 // Simple XHR upload function
-async function uploadFileToS3(file: File, token: string, uploadType: 'video' | 'avatar'): Promise<{ upload_url: string, object_key: string }> {
+async function uploadFileToS3(file: File, token: string, uploadType: 'video' | 'avatar', duration?: number): Promise<{ upload_url: string, object_key: string }> {
   const apiUrl = `${process.env.NEXT_PUBLIC_BACKEND_API_URL}/api/upload-url`;
+  const body: any = {
+    filename: file.name,
+    content_type: file.type || 'application/octet-stream',
+    upload_type: uploadType
+  };
+  if (uploadType === 'video' && duration !== undefined) {
+    body.duration = duration;
+  }
   const presignedUrlResponse = await fetch(apiUrl, { 
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${token}`
     },
-    body: JSON.stringify({ 
-      filename: file.name,
-      content_type: file.type || 'application/octet-stream',
-      upload_type: uploadType
-    }),
+    body: JSON.stringify(body),
   })
 
   if (!presignedUrlResponse.ok) {
@@ -145,6 +149,9 @@ export default function VideoCreator() {
   // Zero credits modal state
   const [showZeroCreditsModal, setShowZeroCreditsModal] = useState<boolean>(false);
   
+  // Add state to track manual script mode
+  const [manualScriptMode, setManualScriptMode] = useState(false);
+  
   const supabase = createClient();
   const router = useRouter();
   
@@ -195,13 +202,44 @@ export default function VideoCreator() {
   }, [avatarPreviewUrl, videoPreviewUrl]);
   
   // Handle avatar file selection
-  const handleAvatarFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = event.target.files?.[0];
     if (selectedFile) {
-      setAvatarFile(selectedFile);
-      setUploadedAvatarKey(null);
-      setAvatarUploadProgress(0);
-      setAvatarPreviewUrl(URL.createObjectURL(selectedFile));
+      // --- Client-side validation for avatar image ---
+      const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
+      const maxSize = 5 * 1024 * 1024; // 5MB
+      if (!allowedTypes.includes(selectedFile.type)) {
+        toast.error("Portrait image must be JPG, PNG, or WebP.");
+        return;
+      }
+      if (selectedFile.size > maxSize) {
+        toast.error("Portrait image must be 5MB or less.");
+        return;
+      }
+      // Check resolution and aspect ratio
+      const img = new window.Image();
+      img.onload = () => {
+        if (
+          img.width < 256 || img.height < 256 ||
+          img.width > 1024 || img.height > 1024
+        ) {
+          toast.error("Portrait image must be between 256x256 and 1024x1024 pixels.");
+          return;
+        }
+        const aspect = img.width / img.height;
+        if (aspect < 0.95 || aspect > 1.05) {
+          toast.error("Portrait image should be square (1:1 aspect ratio) for best results.");
+          // Allow, but warn
+        }
+        setAvatarFile(selectedFile);
+        setUploadedAvatarKey(null);
+        setAvatarUploadProgress(0);
+        setAvatarPreviewUrl(URL.createObjectURL(selectedFile));
+      };
+      img.onerror = () => {
+        toast.error("Could not read image file.");
+      };
+      img.src = URL.createObjectURL(selectedFile);
     }
   };
   
@@ -209,10 +247,39 @@ export default function VideoCreator() {
   const handleVideoFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = event.target.files?.[0];
     if (selectedFile) {
-      setVideoFile(selectedFile);
-      setUploadedVideoKey(null);
-      setVideoUploadProgress(0);
-      setVideoPreviewUrl(URL.createObjectURL(selectedFile));
+      // --- Client-side validation for video ---
+      const allowedTypes = ["video/mp4", "video/webm", "video/quicktime", "video/mov"];
+      const maxSize = 100 * 1024 * 1024; // 100MB
+      if (!allowedTypes.includes(selectedFile.type)) {
+        toast.error("Video must be MP4, MOV, or WebM.");
+        return;
+      }
+      if (selectedFile.size > maxSize) {
+        toast.error("Video must be 100MB or less.");
+        return;
+      }
+      // Check video resolution and duration
+      const video = document.createElement('video');
+      video.preload = 'metadata';
+      video.onloadedmetadata = () => {
+        window.URL.revokeObjectURL(video.src);
+        if (video.videoWidth > 1920 || video.videoHeight > 1080) {
+          toast.error("Video resolution must be 1920x1080 or less.");
+          return;
+        }
+        if (video.duration > 60) {
+          toast.error("Video must be 1 minute or less.");
+          return;
+        }
+        setVideoFile(selectedFile);
+        setUploadedVideoKey(null);
+        setVideoUploadProgress(0);
+        setVideoPreviewUrl(URL.createObjectURL(selectedFile));
+      };
+      video.onerror = () => {
+        toast.error("Could not read video file.");
+      };
+      video.src = URL.createObjectURL(selectedFile);
     }
   };
   
@@ -282,20 +349,28 @@ export default function VideoCreator() {
       toast.error("Please select a video file first.");
       return;
     }
-    
     setIsVideoUploading(true);
     setVideoUploadProgress(0);
-    
     try {
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
       if (sessionError || !session) {
         throw new Error("Authentication error. Please log in again.");
       }
       const token = session.access_token;
-      
-      const { upload_url, object_key } = await uploadFileToS3(videoFile, token, 'video');
+      // Get video duration
+      const video = document.createElement('video');
+      const duration = await new Promise<number>((resolve, reject) => {
+        video.preload = 'metadata';
+        video.onloadedmetadata = () => {
+          resolve(video.duration);
+        };
+        video.onerror = () => {
+          reject(new Error("Could not read video file for duration check."));
+        };
+        video.src = URL.createObjectURL(videoFile);
+      });
+      const { upload_url, object_key } = await uploadFileToS3(videoFile, token, 'video', duration);
       await performXhrUpload(videoFile, upload_url, setVideoUploadProgress);
-      
       setUploadedVideoKey(object_key);
       toast.success("Video file uploaded successfully!");
     } catch (error) {
@@ -474,7 +549,7 @@ export default function VideoCreator() {
   }, [jobStatus, activeStep, resultVideoUrl, stopPolling, pollingIntervalId]); // Added resultVideoUrl, stopPolling, pollingIntervalId
   
   // Handle generation start
-  const handleStartGeneration = async () => {
+  const handleStartGeneration = async (manual = false) => {
     if (!uploadedAvatarKey) {
       toast.error("Please upload a portrait image first.");
       return;
@@ -515,7 +590,7 @@ export default function VideoCreator() {
       setJobStatus(null);
       setResultVideoUrl(null);
       setScriptLoaded(false);
-      setActiveStep("generating");
+      setActiveStep(manual ? "review" : "generating");
       stopPolling();
       
       const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_API_URL}/api/generate-meme`, {
@@ -526,7 +601,8 @@ export default function VideoCreator() {
         },
         body: JSON.stringify({
           avatar_s3_key: uploadedAvatarKey,
-          video_s3_key: uploadedVideoKey
+          video_s3_key: uploadedVideoKey,
+          manual_script_mode: manual ? true : undefined
         })
       });
       
@@ -890,7 +966,7 @@ export default function VideoCreator() {
                     ref={avatarInputRef} 
                     onChange={handleAvatarFileChange} 
                     className="hidden"
-                    accept="image/jpeg,image/png,image/gif,image/webp" 
+                    accept="image/jpeg,image/png,image/webp" 
                   />
                   
                   {avatarPreviewUrl ? (
@@ -936,6 +1012,13 @@ export default function VideoCreator() {
                       )}
                     </div>
                   )}
+                  <div className="mt-3 text-xs text-muted-foreground text-left">
+                    <b>Requirements:</b><br />
+                    Format: JPG, PNG, or WebP<br />
+                    Max size: 5MB<br />
+                    Resolution: 256x256 to 1024x1024 pixels<br />
+                    Aspect ratio: 1:1 (square) recommended
+                  </div>
                 </div>
               </div>
               
@@ -956,7 +1039,7 @@ export default function VideoCreator() {
                     ref={videoInputRef} 
                     onChange={handleVideoFileChange} 
                     className="hidden"
-                    accept="video/mp4,video/webm,video/quicktime" 
+                    accept="video/mp4,video/webm,video/quicktime,video/mov" 
                   />
                   
                   {videoPreviewUrl ? (
@@ -976,7 +1059,7 @@ export default function VideoCreator() {
                     <div className="py-8 flex flex-col items-center text-muted-foreground">
                       <UploadCloudIcon className="h-10 w-10 mb-2" />
                       <p>Upload a background video</p>
-                      <p className="text-xs mt-1">MP4, WebM up to 20MB</p>
+                      <p className="text-xs mt-1">MP4, MOV, or WebM up to 100MB</p>
                     </div>
                   )}
                   
@@ -1002,23 +1085,46 @@ export default function VideoCreator() {
                       )}
                     </div>
                   )}
+                  <div className="mt-3 text-xs text-muted-foreground text-left">
+                    <b>Requirements:</b><br />
+                    Format: MP4, MOV, or WebM<br />
+                    Max size: 100MB<br />
+                    Resolution: up to 1920x1080<br />
+                    Duration: up to 1 minute
+                  </div>
                 </div>
               </div>
               
               {/* Credits Display */}
               <div className="col-span-1 lg:col-span-2 mt-4">
-                <div className="flex items-center justify-between border-2 border-border p-4 rounded-md bg-card/70">
-                  <div>
-                    <h3 className="text-lg font-medium">Available Credits</h3>
-                    <p className="text-sm text-muted-foreground">Each video uses 1 credit</p>
+                <div className="flex flex-col md:flex-row gap-4 items-center justify-between border-2 border-border p-4 rounded-md bg-card/70">
+                  <div className="flex-1">
+                    <h3 className="text-lg font-medium">How do you want to create your script?</h3>
+                    <p className="text-sm text-muted-foreground mt-1">Choose to auto-generate a script by analyzing your video, or skip analysis and write your own script (or use AI to help).</p>
                   </div>
-                  <div className="flex items-center">
-                    <span className="text-2xl font-bold mr-2">{userCredits !== null ? userCredits : '...'}</span>
-                    <Link href="/billing">
-                      <Button variant="outline" size="sm" className="ml-2">
-                        Get More
-                      </Button>
-                    </Link>
+                  <div className="flex flex-col md:flex-row gap-2 mt-4 md:mt-0">
+                    <Button
+                      onClick={() => handleStartGeneration(false)}
+                      disabled={!uploadedAvatarKey || isGenerating}
+                      size="lg"
+                      className="bg-gradient-primary hover:bg-gradient-primary-hover"
+                    >
+                      <span className="flex flex-col items-center gap-1">
+                        <span>Auto Generate Script</span>
+                        <span className="text-xs font-normal text-muted-foreground">Analyzes your video and generates a script (may take longer)</span>
+                      </span>
+                    </Button>
+                    <Button
+                      onClick={() => handleStartGeneration(true)}
+                      disabled={!uploadedAvatarKey || isGenerating}
+                      size="lg"
+                      variant="outline"
+                    >
+                      <span className="flex flex-col items-center gap-1">
+                        <span>Create Script Manually</span>
+                        <span className="text-xs font-normal text-muted-foreground">Skip video analysis and write your own script (or use AI to help)</span>
+                      </span>
+                    </Button>
                   </div>
                 </div>
               </div>
@@ -1033,10 +1139,14 @@ export default function VideoCreator() {
                 <Textarea 
                   id="script-editor"
                   value={editedScript}
-                  onChange={(e) => setEditedScript(e.target.value)}
+                  onChange={(e) => {
+                    if (e.target.value.length <= 600) setEditedScript(e.target.value);
+                  }}
+                  maxLength={600}
                   className="h-48 w-full border-2 border-border/50 bg-card/50 text-base p-4 resize-none"
                   placeholder="Loading script..."
                 />
+                <div className="text-xs text-muted-foreground text-right mt-1">{editedScript.length} / 600 characters</div>
               </div>
               
               <div className="bg-primary/5 border-2 border-primary/20 rounded-lg p-4 space-y-3">
@@ -1338,7 +1448,7 @@ export default function VideoCreator() {
           {activeStep === "upload" && (
             <div className="flex justify-end w-full">
               <Button 
-                onClick={handleStartGeneration}
+                onClick={() => handleStartGeneration(false)}
                 disabled={!uploadedAvatarKey || isGenerating}
                 size="lg"
                 className="bg-gradient-primary hover:bg-gradient-primary-hover"
@@ -1354,7 +1464,10 @@ export default function VideoCreator() {
           {activeStep === "review" && (
             <div className="flex justify-between w-full">
               <Button 
-                onClick={() => setActiveStep("upload")}
+                onClick={() => {
+                  setActiveStep("upload");
+                  setManualScriptMode(false);
+                }}
                 variant="outline"
               >
                 Back

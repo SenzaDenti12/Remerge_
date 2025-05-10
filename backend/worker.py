@@ -176,6 +176,7 @@ def call_twelve_labs_summarize(video_url: str, job_id: str) -> tuple[str, Option
     try:
         print(f"Submitting video to Twelve Labs for indexing (Index ID: {index_id})...")
         print(f"Video URL: {video_url}") 
+        print(f"[DEBUG] Payload for /tasks: {json.dumps({k: v[1] for k, v in task_files.items()}, indent=2)}")
 
         task_response = requests.post(
             f"{TWELVE_LABS_API_URL}/tasks",
@@ -186,13 +187,22 @@ def call_twelve_labs_summarize(video_url: str, job_id: str) -> tuple[str, Option
         if task_response.status_code != 200:
             # Log full response for debugging before raising
             print(f"[ERROR] Twelve Labs /tasks responded {task_response.status_code}: {task_response.text}")
+            try:
+                print(f"[ERROR] Response JSON: {task_response.json()}")
+            except Exception:
+                print("[ERROR] Response is not valid JSON.")
             task_response.raise_for_status()
         task_id = task_response.json().get('_id')
         if not task_id:
              raise ValueError("Failed to get task ID from Twelve Labs.")
         print(f"Twelve Labs indexing task created: {task_id}")
     except requests.exceptions.RequestException as e:
-        print(f"Error submitting video to Twelve Labs: {e.response.text if e.response else 'No response'}") # Log response text on error
+        # Log the response content if available
+        if hasattr(e, 'response') and e.response is not None:
+            print(f"[ERROR] Twelve Labs exception response: {e.response.text}")
+        import traceback
+        print("[TRACEBACK] Exception during /tasks submission:")
+        print(traceback.format_exc())
         raise ConnectionError(f"Twelve Labs Task Submission Error: {e}") from e
 
     # 3. Poll task status until ready
@@ -355,12 +365,16 @@ def call_lemon_slice(avatar_image_s3_key: str, script_text: str, voice_id: Optio
     """
     Calls the Lemon Slice API to generate a talking head video.
     - Needs the S3 key for the user's uploaded avatar image.
-    - Needs the generated script text.
+    - Needs the generated script text (max 600 chars enforced).
     - Accepts an optional voice_id.
     - Returns a URL to the generated talking head video upon completion.
     """
     print(f"--- Calling Lemon Slice API ---")
     print(f"Avatar S3 Key: {avatar_image_s3_key}")
+    # Enforce 600 character limit for LemonSlice
+    if len(script_text) > 600:
+        print(f"[WARN] Script text exceeds 600 characters. Truncating for LemonSlice.")
+        script_text = script_text[:600]
     print(f"Script: {script_text[:100]}...")
     print(f"Voice ID: {voice_id if voice_id else 'Default (Sam)'}")
     
@@ -659,6 +673,10 @@ def process_continue_job(redis_message_id: str, job_data: dict):
         if not moderate_text(script, user_id):
             raise RuntimeError("Final script flagged by moderation.")
 
+        # Enforce 600 char limit for script
+        if len(script) > 600:
+            print(f"[WARN] Script text exceeds 600 characters in process_continue_job. Truncating.")
+            script = script[:600]
         # Lip Sync (Lemon Slice) - Pass voice_id
         update_job_status(custom_job_id, {"stage": "lip_syncing"})
         # Pass custom_job_id and user_id to call_lemon_slice for progress updates (needs modification)
@@ -753,6 +771,7 @@ def process_new_job(redis_message_id: str, job_data_str: str):
         
         video_s3_key = job_data.get('video_s3_key') 
         avatar_s3_key = job_data.get('avatar_s3_key')
+        manual_script_mode = job_data.get('manual_script_mode', False)
         
         if not avatar_s3_key:
              print(f"[WORKER_NEW_JOB][ERROR] Job data for {custom_job_id} missing required 'avatar_s3_key'.") # Log error
@@ -762,7 +781,11 @@ def process_new_job(redis_message_id: str, job_data_str: str):
         # --- Pipeline Steps up to Script Generation --- 
         script = None
         summary = None # Initialize summary
-        if video_s3_key:
+        if manual_script_mode:
+            print(f"[WORKER_NEW_JOB] Manual script mode enabled. Skipping video analysis and proceeding to script review with empty script.")
+            script = ""
+            thumbnail_url = None
+        elif video_s3_key:
             # 1. Summarize Video (includes thumbnail extraction)
             print(f"[WORKER_NEW_JOB] Job {custom_job_id}: Starting video summarization.") # Log step
             update_job_status(custom_job_id, {"stage": "summarizing"})
@@ -782,7 +805,7 @@ def process_new_job(redis_message_id: str, job_data_str: str):
              # Avatar-only flow: Generate default script
              print(f"[WORKER_NEW_JOB][INFO] Job {custom_job_id}: Video S3 key not provided. Generating default script.") # Log info
              update_job_status(custom_job_id, {"stage": "generating_script"}) # Update stage
-             script = "Hello from ReMerge AI! This video was generated using just an avatar." 
+             script = "Hello from ReMerge AI! This video was generated using just an avatar."
              thumbnail_url = None # No thumbnail for avatar-only
              print(f"[WORKER_NEW_JOB] Job {custom_job_id}: Default script generated.") # Log step result
 
@@ -919,6 +942,9 @@ if __name__ == "__main__":
             time.sleep(5) # Wait before retrying connection/read
         except Exception as e:
             print(f"Unexpected error in worker loop: {e}")
+            import traceback
+            print("[WORKER LOOP TRACEBACK]:")
+            print(traceback.format_exc())
             # Decide whether to continue or exit on other errors
             time.sleep(2) # Brief pause before trying again
 
