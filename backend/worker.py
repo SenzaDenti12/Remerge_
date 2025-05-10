@@ -314,25 +314,6 @@ def call_twelve_labs_summarize(video_url: str, job_id: str) -> tuple[str, Option
             print("Waiting 15s before retrying summary request...")
             time.sleep(15)
 
-def moderate_text(text: str, user_id: str) -> bool:
-    """Checks text using OpenAI Moderation API. Returns True if safe, False otherwise."""
-    if not text:
-        print("[WARN] Moderation received empty text. Skipping.")
-        return True # Or False, depending on policy for empty inputs
-    try:
-        print(f"Moderating text for user {user_id}: '{text[:50]}...' ")
-        response = openai_client.moderations.create(input=text, model="text-moderation-latest")
-        result = response.results[0]
-        if result.flagged:
-            print(f"[WARN] Moderation Flagged for user {user_id}. Categories: {[cat for cat, flagged in result.categories.model_dump().items() if flagged]}")
-            return False
-        print("Text passed moderation.")
-        return True
-    except OpenAIError as e:
-        print(f"[ERROR] OpenAI Moderation API error: {e}")
-        # Fail safe: if moderation fails, consider it unsafe or handle differently
-        return False 
-
 def generate_script(summary: str, user_id: str) -> str:
     """Generates a meme script using OpenAI GPT-4o."""
     system_prompt = "You are a witty meme creator. Given a summary of a video, you create a funny narrator-style script spoken by one person (no brackets or colons - the text should be fully speakable), suitable for a talking head meme."
@@ -629,109 +610,101 @@ def process_continue_job(redis_message_id: str, job_data: dict):
     custom_job_id = job_data.get('job_id')
     if not custom_job_id:
         print("[ERROR] process_continue_job missing custom_job_id.")
-        # Acknowledge message to prevent loop, but mark as failed?
-        return # Cannot proceed without job ID
+        return
 
     print(f"\n--- Continuing Job ID: {custom_job_id} (Redis Msg ID: {redis_message_id}) ---")
-    user_id = None # Need user_id for updates
+    user_id = None
     thumbnail_url = None
     try:
-        # 1. Retrieve necessary data from Redis status hash
         status_key = f"job_status:{custom_job_id}"
         saved_status = redis_client.hgetall(status_key)
         if not saved_status:
             raise ValueError(f"No status found in Redis for job {custom_job_id}")
-        
-        # Check if we need to decode bytes - some Redis clients return bytes, others return strings
         if isinstance(next(iter(saved_status.values())), bytes):
-            # Decode bytes from Redis hash
             saved_status = {k.decode('utf-8'): v.decode('utf-8') for k, v in saved_status.items()}
-        
         user_id = saved_status.get('user_id')
         if not user_id:
-             raise ValueError(f"Missing user_id in saved status for job {custom_job_id}")
-             
-        script = job_data.get('script') # Get the (potentially edited) script from the new message
+            raise ValueError(f"Missing user_id in saved status for job {custom_job_id}")
+        script = job_data.get('script')
         if not script:
             raise ValueError(f"Missing 'script' in continue job data for job {custom_job_id}")
-            
         avatar_s3_key = saved_status.get('avatar_s3_key')
         if not avatar_s3_key:
             raise ValueError(f"Missing 'avatar_s3_key' in saved status for job {custom_job_id}")
-
-        video_s3_key = saved_status.get('video_s3_key') # Optional original video
-        thumbnail_url = saved_status.get('thumbnail_url') # Retrieve saved thumbnail
-        voice_id = job_data.get('voice_id') # Get selected voice_id
-
+        video_s3_key = saved_status.get('video_s3_key')
+        thumbnail_url = saved_status.get('thumbnail_url')
+        voice_id = job_data.get('voice_id')
         print(f"Retrieved Data - User: {user_id}, Avatar: {avatar_s3_key}, Video: {video_s3_key}, Voice: {voice_id}")
         print(f"Using Script: {script[:100]}...")
-
-        # --- Start processing from Moderation/Lip Sync ---
-        # Remove script moderation
-        # Deduct credit right before calling LemonSlice
+        # Only LemonSlice and Creatomate are called here, never any summarization or moderation.
         def get_user_credits(user_id):
             response = supabase.table('profiles').select('credits').eq('id', user_id).maybe_single().execute()
             return response.data.get('credits', 0) if response.data else 0
         current_credits = get_user_credits(user_id)
         if current_credits <= 0:
-            update_job_status(custom_job_id, {"status": "failed", "error_message": "Insufficient credits.", "stage": "error"}, user_id)
+            try:
+                update_job_status(custom_job_id, {"status": "failed", "error_message": "Insufficient credits.", "stage": "error"}, user_id)
+            except Exception as e:
+                print(f"[ERROR] Failed to update status to failed for insufficient credits: {e}")
             print(f"[WORKER][CREDITS] User {user_id} has insufficient credits. Job {custom_job_id} failed.")
             return
-        # Deduct credit
         supabase.table('profiles').update({'credits': current_credits - 1}).eq('id', user_id).execute()
         print(f"[WORKER][CREDITS] Deducted 1 credit from user {user_id} for job {custom_job_id}.")
-        # Lip Sync (Lemon Slice) - Pass voice_id
-        update_job_status(custom_job_id, {"stage": "lip_syncing"})
+        try:
+            update_job_status(custom_job_id, {"stage": "lip_syncing"})
+        except Exception as e:
+            print(f"[ERROR] Failed to update status to lip_syncing: {e}")
         lemon_slice_video_url = call_lemon_slice(avatar_s3_key, script, voice_id)
-        
-        # Render Final Video (Creatomate)
-        update_job_status(custom_job_id, {"stage": "rendering_final"})
+        try:
+            update_job_status(custom_job_id, {"stage": "rendering_final"})
+        except Exception as e:
+            print(f"[ERROR] Failed to update status to rendering_final: {e}")
         final_video_url = call_creatomate(
-            lemon_slice_video_url=lemon_slice_video_url, 
-            original_video_s3_key=video_s3_key, 
+            lemon_slice_video_url=lemon_slice_video_url,
+            original_video_s3_key=video_s3_key,
             script_text=script
         )
-
-        # Verify URL Accessibility
-        update_job_status(custom_job_id, {"stage": "verifying_url"})
+        try:
+            update_job_status(custom_job_id, {"stage": "verifying_url"})
+        except Exception as e:
+            print(f"[ERROR] Failed to update status to verifying_url: {e}")
         if not verify_url_accessible(final_video_url):
-             raise RuntimeError("Generated video URL did not become accessible.")
-
-        # Success
+            raise RuntimeError("Generated video URL did not become accessible.")
         print(f"Job {custom_job_id} completed successfully. Final URL: {final_video_url}")
-        # Include thumbnail_url when updating final status
-        update_job_status(custom_job_id, {
-            "status": "completed", 
-            "final_url": final_video_url, 
-            "thumbnail_url": thumbnail_url, # Pass thumbnail URL
-            "stage": "done"
-        }, user_id)
-
-        # Save result to Supabase
+        try:
+            update_job_status(custom_job_id, {
+                "status": "completed",
+                "final_url": final_video_url,
+                "thumbnail_url": thumbnail_url,
+                "stage": "done"
+            }, user_id)
+        except Exception as e:
+            print(f"[ERROR] Failed to update status to completed: {e}")
         try:
             insert_data = {
                 "user_id": user_id,
                 "video_url": final_video_url,
                 "job_id": custom_job_id,
-                "title": "Untitled Video", 
-                "thumbnail_url": thumbnail_url # Save thumbnail URL
+                "title": "Untitled Video",
+                "thumbnail_url": thumbnail_url
             }
             db_response = supabase.table("generated_videos").insert(insert_data).execute()
             if db_response.data:
-                 print(f"Successfully saved video details to Supabase for job {custom_job_id}")
+                print(f"Successfully saved video details to Supabase for job {custom_job_id}")
             else:
-                 print(f"[ERROR] Failed to save video details to Supabase for job {custom_job_id}. Response: {db_response}")
+                print(f"[ERROR] Failed to save video details to Supabase for job {custom_job_id}. Response: {db_response}")
         except APIError as e:
             print(f"[ERROR] Supabase API Error saving video details for job {custom_job_id}: {e}")
         except Exception as e:
-             print(f"[ERROR] Unexpected error saving video details to Supabase for job {custom_job_id}: {e}")
-
+            print(f"[ERROR] Unexpected error saving video details to Supabase for job {custom_job_id}: {e}")
     except Exception as e:
         error_message = f"Continue Job failed: {type(e).__name__} - {str(e)}"
         print(f"[ERROR] {error_message}")
-        # Ensure user_id is available for failure update if retrieved
-        fail_user_id = user_id if 'user_id' in locals() and user_id else None 
-        update_job_status(custom_job_id, {"status": "failed", "error_message": str(e), "stage": "error"}, fail_user_id)
+        fail_user_id = user_id if 'user_id' in locals() and user_id else None
+        try:
+            update_job_status(custom_job_id, {"status": "failed", "error_message": str(e), "stage": "error"}, fail_user_id)
+        except Exception as ex:
+            print(f"[ERROR] Failed to update status to failed in exception handler: {ex}")
 
 def process_new_job(redis_message_id: str, job_data_str: str):
     """Processes the initial part of a job: Upload -> Script Gen -> Stop for Review."""
@@ -784,24 +757,28 @@ def process_new_job(redis_message_id: str, job_data_str: str):
         script = None
         summary = None # Initialize summary
         if manual_script_mode:
-            print(f"[WORKER_NEW_JOB] Manual script mode enabled. Skipping video analysis and proceeding to script review with empty script.")
+            print(f"[WORKER_NEW_JOB] Manual script mode enabled. Skipping all video analysis and script generation. Proceeding to script review with empty script.")
             script = ""
             thumbnail_url = None
         elif video_s3_key:
-            # 1. Summarize Video (includes thumbnail extraction)
-            print(f"[WORKER_NEW_JOB] Job {custom_job_id}: Starting video summarization.") # Log step
-            update_job_status(custom_job_id, {"stage": "summarizing"})
+            # Only call Twelve Labs if NOT manual_script_mode
+            print(f"[WORKER_NEW_JOB] Job {custom_job_id}: Starting video summarization.")
+            try:
+                update_job_status(custom_job_id, {"stage": "summarizing"})
+            except Exception as e:
+                print(f"[ERROR] Failed to update status to summarizing: {e}")
             video_url = get_s3_presigned_url(AWS_S3_BUCKET_NAME, video_s3_key)
-            if not video_url: 
-                print(f"[WORKER_NEW_JOB][ERROR] Job {custom_job_id}: Failed to get S3 presigned URL for input video {video_s3_key}.") # Log error
+            if not video_url:
+                print(f"[WORKER_NEW_JOB][ERROR] Job {custom_job_id}: Failed to get S3 presigned URL for input video {video_s3_key}.")
                 raise ValueError("Failed to get S3 presigned URL for input video.")
             summary, thumbnail_url = call_twelve_labs_summarize(video_url, custom_job_id)
-            print(f"[WORKER_NEW_JOB] Job {custom_job_id}: Video summarization complete. Summary length: {len(summary) if summary else 0}") # Log step result
-            # 2. Generate Script from Summary
-            print(f"[WORKER_NEW_JOB] Job {custom_job_id}: Starting script generation from summary.") # Log step
-            update_job_status(custom_job_id, {"stage": "generating_script"})
+            print(f"[WORKER_NEW_JOB] Job {custom_job_id}: Video summarization complete. Summary length: {len(summary) if summary else 0}")
+            try:
+                update_job_status(custom_job_id, {"stage": "generating_script"})
+            except Exception as e:
+                print(f"[ERROR] Failed to update status to generating_script: {e}")
             script = generate_script(summary, user_id)
-            print(f"[WORKER_NEW_JOB] Job {custom_job_id}: Script generation from summary complete. Script length: {len(script) if script else 0}") # Log step result
+            print(f"[WORKER_NEW_JOB] Job {custom_job_id}: Script generation from summary complete. Script length: {len(script) if script else 0}")
         else:
             # Avatar-only flow: Generate default script
             print(f"[WORKER_NEW_JOB][INFO] Job {custom_job_id}: Video S3 key not provided. Generating default script.") # Log info
@@ -892,7 +869,6 @@ if __name__ == "__main__":
             )
 
             if not response:
-                # Check for pending jobs (delivered but not acknowledged)
                 pending = redis_client.xpending(MEME_JOB_STREAM, group_name)
                 if pending and isinstance(pending, dict) and pending.get('count', 0) > 0:
                     print(f"[DEBUG] {pending['count']} pending jobs found. Oldest: {pending.get('min')}, newest: {pending.get('max')}")

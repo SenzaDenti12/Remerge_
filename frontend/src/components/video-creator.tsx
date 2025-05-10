@@ -600,7 +600,7 @@ export default function VideoCreator() {
         body: JSON.stringify({
           avatar_s3_key: uploadedAvatarKey,
           video_s3_key: uploadedVideoKey,
-          manual_script_mode: manual ? true : undefined
+          manual_script_mode: !!manual // Always send boolean
         })
       });
       
