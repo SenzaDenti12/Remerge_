@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, Syne } from "next/font/google";
+import Script from 'next/script';
 import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
 import Link from 'next/link';
@@ -29,6 +30,20 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" data-mode="dark" className="dark">
+      <head>
+        <Script
+          strategy="afterInteractive"
+          src="https://www.googletagmanager.com/gtag/js?id=G-L00S1E3J87"
+        />
+        <Script id="google-analytics" strategy="afterInteractive">
+          {`
+            window.dataLayer = window.dataLayer || [];
+            function gtag(){dataLayer.push(arguments);}
+            gtag('js', new Date());
+            gtag('config', 'G-L00S1E3J87');
+          `}
+        </Script>
+      </head>
       <body
         className={`${inter.variable} ${syne.variable} antialiased min-h-screen flex flex-col`}
       >
