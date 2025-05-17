@@ -136,10 +136,10 @@ export default function ClientLayout({ children }: { children: ReactNode }) {
               <div>
                 <h4 className="font-semibold mb-4 text-lg">Legal</h4>
                 <ul className="space-y-3 text-muted-foreground">
-                  {/* Placeholder links */}
-                  <li><a href="#" className="hover:text-primary transition-colors">Privacy Policy</a></li>
-                  <li><a href="#" className="hover:text-primary transition-colors">Terms of Service</a></li>
-                  <li><a href="#" className="hover:text-primary transition-colors">Cookie Policy</a></li>
+                  <li><Link href="/privacy-policy" className="hover:text-primary transition-colors">Privacy Policy</Link></li>
+                  <li><Link href="/terms-of-service" className="hover:text-primary transition-colors">Terms of Service</Link></li>
+                  {/* Optional: Add Cookie Policy link if you create one */}
+                  {/* <li><Link href="/cookie-policy" className="hover:text-primary transition-colors">Cookie Policy</Link></li> */}
                 </ul>
               </div>
             </div>

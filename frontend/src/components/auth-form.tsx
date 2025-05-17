@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label"
 import { toast } from "sonner"
 import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from "@/components/ui/card"
 import { useRouter, useSearchParams } from 'next/navigation'
+import Link from 'next/link'
 
 export default function AuthForm() {
   const [email, setEmail] = useState('')
@@ -170,7 +171,7 @@ export default function AuthForm() {
           </div>
         </div>
         <p className="text-sm text-center text-muted-foreground">
-          By continuing, you agree to our Terms of Service and Privacy Policy.
+          By continuing, you agree to our <Link href="/terms-of-service" className="underline hover:text-primary">Terms of Service</Link> and <Link href="/privacy-policy" className="underline hover:text-primary">Privacy Policy</Link>.
           Your email will only be used for authentication purposes.
         </p>
       </CardFooter>

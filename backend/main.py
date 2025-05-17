@@ -949,7 +949,7 @@ async def regenerate_script(
 Your task is to modify an existing script based on the user's request.
 Keep the spirit of the original script while incorporating the requested changes.
 The output should be purely the modified script without any explanations, notes, or formatting.
-Keep the length similar to the original script."""
+Keep the length similar to the original script. The final script must be less than 900 characters long."""
 
         # Create user message that includes the current script and the modification request
         user_message = f"""CURRENT SCRIPT:
@@ -972,7 +972,7 @@ MODIFICATION REQUEST:
                     {"role": "user", "content": user_message}
                 ],
                 temperature=0.7,
-                max_tokens=500,
+                max_tokens=450, # Adjusted to be reasonable for a <900 char script, leaving room for prompt itself
                 user=user_id  # For OpenAI monitoring
             )
             

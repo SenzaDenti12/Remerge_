@@ -107,6 +107,45 @@ function ZeroCreditsModal({ onClose, onUpgrade }: { onClose: () => void, onUpgra
   );
 }
 
+// New Confirmation Modal Component for Navigating Back
+function NavigateBackConfirmModal({
+  onConfirm,
+  onCancel,
+}: {
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
+      <Card className="w-full max-w-md animate-in fade-in-0 zoom-in-95 duration-300 border-destructive">
+        <CardHeader>
+          <CardTitle className="flex items-center text-xl text-destructive">
+            <AlertCircleIcon className="w-6 h-6 mr-2" />
+            Confirm Navigation
+          </CardTitle>
+          <CardDescription className="text-destructive/90">
+            Going back now will stop the current video generation process.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <p className="mb-2">
+            You will lose any current progress, and the credit used for this generation may not be refunded.
+          </p>
+          <p className="font-semibold">Are you sure you want to go back and lose progress?</p>
+        </CardContent>
+        <CardFooter className="flex justify-end gap-3">
+          <Button variant="outline" onClick={onCancel} className="text-muted-foreground">
+            Stay Here
+          </Button>
+          <Button variant="destructive" onClick={onConfirm}>
+            Yes, Go Back & Lose Progress
+          </Button>
+        </CardFooter>
+      </Card>
+    </div>
+  );
+}
+
 export default function VideoCreator() {
   // File upload states
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
@@ -151,6 +190,9 @@ export default function VideoCreator() {
   
   // Add state to track manual script mode
   const [manualScriptMode, setManualScriptMode] = useState(false);
+  
+  // New Navigation Confirmation Modal state
+  const [showNavigateBackConfirmModal, setShowNavigateBackConfirmModal] = useState<boolean>(false);
   
   const supabase = createClient();
   const router = useRouter();
@@ -895,6 +937,28 @@ export default function VideoCreator() {
     }
   };
 
+  const handleConfirmNavigateBack = () => {
+    setShowNavigateBackConfirmModal(false);
+    setActiveStep("upload");
+    setManualScriptMode(false); // Reset manual mode flag
+    // Potentially stop polling if a job was active, though activeStep change might handle it
+    if (generatedJobId && (jobStatus?.status === 'processing' || jobStatus?.status === 'pending_review')) {
+      stopPolling(); 
+      // Optionally, you could send a request to the backend to attempt to cancel the job if possible,
+      // but this is complex and depends on backend support.
+      toast.warning("Generation process was stopped.");
+    }
+    setGeneratedJobId(null); // Clear job ID as we are abandoning it
+    setJobStatus(null);
+    setResultVideoUrl(null);
+    setEditedScript("");
+    setScriptLoaded(false);
+  };
+
+  const handleCancelNavigateBack = () => {
+    setShowNavigateBackConfirmModal(false);
+  };
+
   return (
     <div className="space-y-8">
       {/* Zero Credits Modal */}
@@ -905,6 +969,14 @@ export default function VideoCreator() {
             setShowZeroCreditsModal(false);
             router.push('/billing');
           }}
+        />
+      )}
+    
+      {/* New Navigation Confirmation Modal */}
+      {showNavigateBackConfirmModal && (
+        <NavigateBackConfirmModal 
+          onConfirm={handleConfirmNavigateBack}
+          onCancel={handleCancelNavigateBack}
         />
       )}
     
@@ -1152,13 +1224,13 @@ export default function VideoCreator() {
                   id="script-editor"
                   value={editedScript}
                   onChange={(e) => {
-                    if (e.target.value.length <= 600) setEditedScript(e.target.value);
+                    if (e.target.value.length <= 900) setEditedScript(e.target.value);
                   }}
-                  maxLength={600}
+                  maxLength={900}
                   className="h-48 w-full border-2 border-border/50 bg-card/50 text-base p-4 resize-none"
-                  placeholder="Loading script..."
+                  placeholder={manualScriptMode && !scriptLoaded ? "Start typing your script here..." : "Loading script..."}
                 />
-                <div className="text-xs text-muted-foreground text-right mt-1">{editedScript.length} / 600 characters</div>
+                <div className="text-xs text-muted-foreground text-right mt-1">{editedScript.length} / 900 characters</div>
               </div>
               
               <div className="bg-primary/5 border-2 border-primary/20 rounded-lg p-4 space-y-3">
@@ -1477,8 +1549,8 @@ export default function VideoCreator() {
             <div className="flex justify-between w-full">
               <Button 
                 onClick={() => {
-                  setActiveStep("upload");
-                  setManualScriptMode(false);
+                  // Instead of direct navigation, show confirm modal
+                  setShowNavigateBackConfirmModal(true);
                 }}
                 variant="outline"
               >
