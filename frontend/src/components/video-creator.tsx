@@ -247,13 +247,8 @@ export default function VideoCreator() {
     if (selectedFile) {
       // --- Client-side validation for video ---
       const allowedTypes = ["video/mp4", "video/webm", "video/quicktime", "video/mov"];
-      const maxSize = 100 * 1024 * 1024; // 100MB
       if (!allowedTypes.includes(selectedFile.type)) {
         toast.error("Video must be MP4, MOV, or WebM.");
-        return;
-      }
-      if (selectedFile.size > maxSize) {
-        toast.error("Video must be 100MB or less.");
         return;
       }
       // Check video resolution and duration
@@ -588,9 +583,16 @@ export default function VideoCreator() {
       setGeneratedJobId(null);
       setJobStatus(null);
       setResultVideoUrl(null);
-      setScriptLoaded(false);
       setActiveStep(manual ? "review" : "generating");
       stopPolling();
+      
+      if (manual) {
+        setEditedScript(" "); // Initialize with a space for manual mode
+        setScriptLoaded(true); // Mark script as "loaded"
+      } else {
+        setEditedScript("");   // Clear any previous script for auto mode
+        setScriptLoaded(false); // Ensure it loads the new script from backend for auto mode
+      }
       
       const body = {
         avatar_s3_key: uploadedAvatarKey,
@@ -620,6 +622,11 @@ export default function VideoCreator() {
       setUserCredits(prev => prev !== null ? prev - 1 : null);
       
       // Start polling for status updates
+      // For manual mode, we don't start polling here, as no backend job is created yet.
+      // Polling will start if/when the user continues from the review step.
+      // However, the current logic enqueues for both, so polling is needed.
+      // If manual mode truly skipped initial backend call, this would change.
+      // For now, the backend receives the job for both, worker handles manual_script_mode.
       startPollingJobStatus(result.job_id, token);
       
     } catch (error) {

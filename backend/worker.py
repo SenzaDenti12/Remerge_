@@ -672,21 +672,12 @@ def process_continue_job(redis_message_id: str, job_data: dict):
             raise RuntimeError("Generated video URL did not become accessible.")
         print(f"Job {custom_job_id} completed successfully. Final URL: {final_video_url}")
         try:
-            update_job_status(custom_job_id, {
-                "status": "completed",
-                "final_url": final_video_url,
-                "thumbnail_url": thumbnail_url,
-                "stage": "done"
-            }, user_id)
-        except Exception as e:
-            print(f"[ERROR] Failed to update status to completed: {e}")
-        try:
             insert_data = {
                 "user_id": user_id,
                 "video_url": final_video_url,
                 "job_id": custom_job_id,
                 "title": "Untitled Video",
-                "thumbnail_url": thumbnail_url
+                "thumbnail_url": thumbnail_url if thumbnail_url and thumbnail_url.strip() else None
             }
             db_response = supabase.table("generated_videos").insert(insert_data).execute()
             if db_response.data:
@@ -796,7 +787,7 @@ def process_new_job(redis_message_id: str, job_data_str: str):
             "generated_script": script, 
             "avatar_s3_key": avatar_s3_key, # Save needed keys for continuation
             "video_s3_key": video_s3_key if video_s3_key else "", # Save optional key
-            "thumbnail_url": thumbnail_url if thumbnail_url else "", # Save optional thumbnail
+            "thumbnail_url": thumbnail_url if thumbnail_url and thumbnail_url.strip() else None, # Save optional thumbnail
             "summary": summary if summary else "" # Save summary for context if available
         }, user_id)
         print(f"[WORKER_NEW_JOB] Job {custom_job_id}: Status updated to pending_review in Redis.") # Log step result

@@ -176,14 +176,14 @@ async def create_upload_url(request_body: UploadURLRequest, user_id: str = Depen
     # Define allowed types and size based on upload_type
     if upload_type == 'video':
         allowed_content_types = ["video/mp4", "video/quicktime", "video/webm", "video/mov"]
-        max_size_bytes = 100 * 1024 * 1024 # 100MB
+        max_size_bytes = 2 * 1024 * 1024 * 1024 # 2GB for videos (effectively very large)
         if content_type not in allowed_content_types:
             raise HTTPException(status_code=400, detail=f"Unsupported video type: {content_type}")
         if duration is not None and duration > 60:
             raise HTTPException(status_code=400, detail="Video must be 1 minute or less.")
     elif upload_type == 'avatar':
         allowed_content_types = ["image/jpeg", "image/png", "image/webp"]
-        max_size_bytes = 5 * 1024 * 1024 # 5MB
+        max_size_bytes = 5 * 1024 * 1024 # 5MB for avatars - REMAINS THE SAME
         if content_type not in allowed_content_types:
            raise HTTPException(status_code=400, detail=f"Unsupported avatar image type: {content_type}")
     else:
@@ -255,32 +255,47 @@ async def get_credits_endpoint(user_id: str = Depends(get_current_user_id)):
 # --- Setup New User Profile ---
 async def ensure_user_profile(user_id: str, initial_credits: int = 1) -> None:
     """
-    Creates or updates a user profile with the specified number of initial credits.
-    This is used to ensure new users get the correct number of free credits.
+    Creates or updates a user profile. New users always get 1 initial credit.
+    If an existing free user has the old default of 3 credits, they are set to 1.
     """
     try:
         # Check if profile exists
-        profile_response = supabase.table('profiles').select('id, credits, subscription_status').eq('id', user_id).maybe_single().execute()
-        
+        profile_response = supabase.table('profiles').select('id, credits, subscription_status, subscription_plan').eq('id', user_id).maybe_single().execute()
+
         if not profile_response.data:
-            # Create new profile with initial credits (always 1)
+            # Create new profile with 1 credit
             print(f"[USER_SETUP] Creating new profile for user {user_id} with 1 credit")
             supabase.table('profiles').insert({
                 'id': user_id,
-                'credits': 1,
-                'subscription_status': 'free'
+                'credits': 1, # Always 1 for new users
+                'subscription_status': 'free',
+                'subscription_plan': 'free' # Explicitly set plan to free
             }).execute()
         else:
+            # Profile exists, check if it's a free user with the old 3 credits
             print(f"[USER_SETUP] Profile exists for user {user_id}")
-            # Get current credits
             current_credits = profile_response.data.get('credits')
             subscription_status = profile_response.data.get('subscription_status')
-            # If this is a free account with exactly 3 credits (the old default), update to 1
-            if current_credits == 3 and (not subscription_status or subscription_status == 'free'):
-                print(f"[USER_SETUP] Updating user {user_id} from 3 credits to 1 credit (fixing old default)")
+            subscription_plan = profile_response.data.get('subscription_plan')
+
+            # If this is a free account (by status or plan) and has exactly 3 credits, update to 1
+            is_free_account = (not subscription_status or subscription_status == 'free') and \
+                              (not subscription_plan or subscription_plan == 'free')
+
+            if current_credits == 3 and is_free_account:
+                print(f"[USER_SETUP] Updating user {user_id} from 3 credits to 1 credit (fixing old default for free user)")
                 supabase.table('profiles').update({
                     'credits': 1
                 }).eq('id', user_id).execute()
+            elif subscription_plan is None and subscription_status is None:
+                # If plan and status are completely missing, initialize them and set credits to 1
+                print(f"[USER_SETUP] Initializing plan/status and setting credits to 1 for user {user_id}")
+                supabase.table('profiles').update({
+                    'credits': 1,
+                    'subscription_status': 'free',
+                    'subscription_plan': 'free'
+                }).eq('id', user_id).execute()
+
     except Exception as e:
         print(f"[ERROR] Error ensuring user profile for {user_id}: {e}")
         # Don't raise exception, just log it - this is a background operation
