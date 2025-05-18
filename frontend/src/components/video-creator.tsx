@@ -420,144 +420,196 @@ export default function VideoCreator() {
     }
   };
   
+  // Stop polling
   const stopPolling = useCallback(() => {
     if (pollingIntervalId) {
-      console.log("[POLLING] Clearing interval ID:", pollingIntervalId);
       clearInterval(pollingIntervalId);
       setPollingIntervalId(null);
     }
   }, [pollingIntervalId]);
-
+  
+  // Poll job status
   const pollJobStatus = useCallback(async (jobId: string, token: string) => {
-    if (!jobId) {
-      console.warn("[POLL STATUS] Attempted to poll with no job ID.");
-      stopPolling(); // Stop if job ID is lost
-      return;
+    if (activeStep === "review" && !jobStatus?.final_url) { // Allow one final poll if final_url might be coming
+      console.log("Currently in review, but allowing a check for final URL if status was recently completed.")
     }
     
-    // If pollingIntervalId is null and we are in this function, it means it's an immediate call
-    // or the interval was cleared elsewhere. We should not stop polling here prematurely.
-    // console.log(`[POLL STATUS] Active polling interval ID: ${pollingIntervalId}`);
-
     try {
       console.log(`[POLL STATUS] ⏱️ Checking job ${jobId} status. Current activeStep: ${activeStep}`);
       const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_API_URL}/api/job-status/${jobId}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
-
+      
       if (!response.ok) {
         if (response.status === 404) {
-          console.log(`[POLL STATUS] Job ${jobId} not found yet (404), continuing poll if interval exists.`);
-          // Don't stop polling here if it's an interval, let the interval continue
+          console.log(`[POLL STATUS] Job ${jobId} not found yet (404), continuing poll.`);
           return; 
         }
         console.error(`[POLL STATUS] Failed to fetch job status (${response.status}) for job ${jobId}:`, await response.text());
-        toast.error(`Failed to fetch job status (${response.status})`);
-        stopPolling(); // Stop on definite fetch error other than 404
-        return;
+        throw new Error(`Failed to fetch job status (${response.status})`);
       }
       
       const statusData = await response.json();
       console.log("[POLL STATUS] 📡 Raw status data received:", JSON.stringify(statusData));
-      setJobStatus({...statusData}); // Update jobStatus, this will trigger the useEffect
-
-      // If status is failed, stop polling from here too
+      setJobStatus(statusData); // Update jobStatus state immediately
+      
+      // PRIMARY CHECK: Check for completed Creatomate video
+      if (statusData.status === 'completed' && statusData.final_url) {
+        console.log("✅✅✅ [POLL STATUS] Backend confirms: FINAL URL VERIFIED AND VIDEO IS READY! ✅✅✅");
+        console.log("[POLL STATUS] Final URL to display:", statusData.final_url);
+        
+        // --- FORCE VIDEO DISPLAY LOGIC ---
+        setResultVideoUrl(statusData.final_url); 
+        setActiveStep("result"); 
+        setShowVideoReadyNotification(true); 
+        
+        toast.success("Video Ready! Displaying now...", {
+          duration: 10000, // Increased duration
+          position: "top-center",
+          style: { background: 'linear-gradient(to right, #00b09b, #96c93d)', color: 'white', fontWeight: 'bold', fontSize: '1.1rem' },
+        });
+        
+        console.log("[POLL STATUS] Stopping polling because video is completed and URL is present.");
+        stopPolling(); 
+        return; // Explicitly return after handling completion
+      }
+      
+      // Handle pending review
+      if (statusData.status === 'pending_review' && statusData.stage === 'script_ready_for_review') {
+        console.log("[POLL STATUS] 📝 Script ready for review. Current scriptLoaded state:", scriptLoaded);
+        if (!scriptLoaded && statusData.generated_script) {
+          console.log("[POLL STATUS] Setting new script from backend.");
+          setEditedScript(statusData.generated_script);
+          setScriptLoaded(true);
+        } else if (scriptLoaded) {
+          console.log("[POLL STATUS] Script already loaded, not overwriting user edits.");
+        }
+        // Only switch to review if not already generating/continued
+        if (activeStep !== "generating") {
+          setActiveStep("review");
+          // Note: We no longer stop polling here to avoid missing status transitions after user continues.
+        }
+        return; // Explicitly return, but polling continues via interval
+      }
+      
+      // Handle failed status
       if (statusData.status === 'failed') {
-        console.error("[POLL STATUS] ❌ Generation failed (detected in poll):", statusData.error_message);
-        // Toast and setActiveStep("upload") will be handled by the useEffect watching jobStatus
+        console.error("[POLL STATUS] ❌ Generation failed:", statusData.error_message);
+        toast.error(`Generation failed: ${statusData.error_message || 'Unknown error'}`, { duration: 7000 });
+        setActiveStep("upload"); // Or some other appropriate step
+        console.log("[POLL STATUS] Stopping polling due to failure.");
         stopPolling();
+        return; // Explicitly return
+      }
+      
+      // Handle interim processing stages
+      if (statusData.status === 'processing') {
+        console.log(`[POLL STATUS] ⏳ Job still processing. Stage: ${statusData.stage}`);
+        if (statusData.stage === "verifying_url") {
+          console.log("[POLL STATUS] 🔍 URL verification in progress by backend...");
+          toast.info("Verifying final video URL... Almost there!", { position: "top-center" });
+        }
+      } 
+      // SECONDARY CHECK: Double-check for completed status again
+      // This is important in case the URL verification completed
+      // but the message above didn't catch it (race condition)
+      else if (statusData.status === 'completed' && statusData.final_url) {
+        console.log("[POLL STATUS] 🎉 Found completed status with final_url in follow-up check!");
+        console.log("[POLL STATUS] Final URL to display:", statusData.final_url);
+        
+        // Force video display
+        setResultVideoUrl(statusData.final_url); 
+        setActiveStep("result"); 
+        setShowVideoReadyNotification(true); 
+        
+        toast.success("Video Ready! Displaying now...", {
+          duration: 10000,
+          position: "top-center", 
+          style: { background: 'linear-gradient(to right, #00b09b, #96c93d)', color: 'white', fontWeight: 'bold', fontSize: '1.1rem' },
+        });
+        
+        console.log("[POLL STATUS] Stopping polling because video is completed and URL is present (follow-up check).");
+        stopPolling(); 
         return;
       }
-
-      // Script ready for review is also a point where polling might change or UI updates
-      if (statusData.status === 'pending_review' && statusData.stage === 'script_ready_for_review') {
-        // The useEffect will handle setting the script if not already loaded
-        // Polling will be stopped by the review step effect if needed
+      else {
+        console.log(`[POLL STATUS] ⏳ Job status is '${statusData.status}', stage is '${statusData.stage}'. Continuing to poll.`);
       }
-
-      // The useEffect for jobStatus will now handle the 'completed' state logic including stopping polling.
 
     } catch (error) {
       console.error("[POLL STATUS] Error in pollJobStatus function:", error);
       toast.error(`Critical error checking status: ${(error as Error).message}`);
-      stopPolling(); // Stop polling on any unexpected error in the poll function itself
+      // Optionally stop polling on repeated critical errors to prevent spam
+      // stopPolling(); 
     }
-  }, [activeStep, stopPolling]); // Removed scriptLoaded and jobStatus from here to avoid stale closures issues
-
+  }, [activeStep, scriptLoaded, stopPolling]);
+  
+  // Start polling job status
   const startPollingJobStatus = useCallback((jobId: string, token: string) => {
+    // Clear any existing polling
     if (pollingIntervalId) {
       clearInterval(pollingIntervalId);
+      setPollingIntervalId(null);
     }
+    
     console.log("🚀 STARTING TO POLL FOR VIDEO STATUS - Job ID:", jobId);
-    pollJobStatus(jobId, token); // Initial immediate poll
+    
+    // Execute one poll immediately
+    pollJobStatus(jobId, token);
+    
+    // Always set up regular polling; a separate effect will stop it when appropriate
     const intervalId = setInterval(() => {
-      // console.log("📊 Interval: Polling job status..."); // Can be noisy
+      console.log("📊 Polling job status...");
       pollJobStatus(jobId, token);
-    }, 3000); // Poll every 3 seconds
+    }, 2000); // Poll every 2 seconds for faster updates
+
     setPollingIntervalId(intervalId);
-  }, [pollJobStatus, pollingIntervalId]); // pollJobStatus is now a stable dependency
-
-  // Effect to handle UI changes based on jobStatus updates
+  }, [pollingIntervalId, pollJobStatus]);
+  
+  // Effect to ensure polling is stopped when step changes to review
   useEffect(() => {
-    console.log("[EFFECT FOR JOB_STATUS] Current jobStatus:", JSON.stringify(jobStatus));
-    if (!jobStatus) return;
-
-    // Handle script ready for review
-    if (jobStatus.status === 'pending_review' && jobStatus.stage === 'script_ready_for_review') {
-      console.log("[EFFECT FOR JOB_STATUS] 📝 Script ready for review. Current scriptLoaded state:", scriptLoaded);
-      if (!scriptLoaded && jobStatus.generated_script) {
-        console.log("[EFFECT FOR JOB_STATUS] Setting new script from backend.");
-        setEditedScript(jobStatus.generated_script);
-        setScriptLoaded(true);
-      }
-      if (activeStep !== "review") {
-         setActiveStep("review");
-         // Stop polling when we enter review; user will trigger continuation
-         console.log("[EFFECT FOR JOB_STATUS] Entered review step, stopping polling.");
-         stopPolling();
-      }
-    }
-
-    // Handle completed job
-    if (jobStatus.status === 'completed' && jobStatus.final_url) {
-      console.log("[EFFECT FOR JOB_STATUS] ✅ Job is COMPLETED with a final URL. Current activeStep:", activeStep);
-      console.log("[EFFECT FOR JOB_STATUS] Final URL to display:", jobStatus.final_url);
-
-      setResultVideoUrl(jobStatus.final_url); 
-      setActiveStep("result"); 
-      setShowVideoReadyNotification(true); 
-      
-      toast.success("Video Ready! Displaying now...", {
-        duration: 10000,
-        position: "top-center",
-        style: { background: 'linear-gradient(to right, #00b09b, #96c93d)', color: 'white', fontWeight: 'bold', fontSize: '1.1rem' },
-      });
-      
-      console.log("[EFFECT FOR JOB_STATUS] Job completed, stopping polling.");
+    if (activeStep === "review") {
       stopPolling();
     }
-
-    // Handle failed job
-    if (jobStatus.status === 'failed') {
-      console.error("[EFFECT FOR JOB_STATUS] ❌ Generation failed:", jobStatus.error_message);
-      toast.error(`Generation failed: ${jobStatus.error_message || 'Unknown error'}`, { duration: 7000 });
-      if (activeStep !== 'upload') {
-        setActiveStep("upload"); // Reset to upload step on failure
-      }
-      console.log("[EFFECT FOR JOB_STATUS] Job failed, stopping polling.");
-      stopPolling();
-    }
-
-  }, [jobStatus, scriptLoaded, activeStep, stopPolling]); // Dependencies for this effect
-
-  // Cleanup polling on unmount or when generatedJobId changes (to ensure old polls are stopped)
+  }, [activeStep, stopPolling]);
+  
+  // Cleanup polling on unmount
   useEffect(() => {
     return () => {
-      console.log("[CLEANUP] Component unmounting or generatedJobId changed. Stopping polling.");
-      stopPolling();
+      if (pollingIntervalId) {
+        clearInterval(pollingIntervalId);
+      }
     };
-  }, [stopPolling, generatedJobId]); // Add generatedJobId to stop old polls when a new job starts
-
+  }, [pollingIntervalId]);
+  
+  // AGGRESSIVE STATE SYNC: Effect to force result view when job is complete and URL is available
+  useEffect(() => {
+    console.log("[EFFECT SYNC] Checking jobStatus for completion:", JSON.stringify(jobStatus));
+    if (jobStatus?.status === 'completed' && jobStatus?.final_url) {
+      console.log("[EFFECT SYNC] ✅ Job is COMPLETED with a final URL. Current activeStep:", activeStep);
+      if (activeStep !== "result") {
+        console.log("[EFFECT SYNC] Forcing activeStep to 'result' and setting resultVideoUrl.");
+        setResultVideoUrl(jobStatus.final_url); // Ensure URL is set first
+        setActiveStep("result");
+        setShowVideoReadyNotification(true); // Ensure notification banner shows
+        toast.info("Video ready! Transitioning to results by EFFECT SYNC.", { duration: 5000 });
+      } else {
+        console.log("[EFFECT SYNC] Already in result step, ensuring resultVideoUrl is current.");
+        if (resultVideoUrl !== jobStatus.final_url) {
+          setResultVideoUrl(jobStatus.final_url); // Update if somehow different
+        }
+      }
+      // We might also want to stop polling here again, just in case
+      if (pollingIntervalId) {
+        console.log("[EFFECT SYNC] Stopping any lingering polling.");
+        stopPolling();
+      }
+    } else {
+      console.log("[EFFECT SYNC] Job not yet completed or final_url missing.",
+                  `Status: ${jobStatus?.status}, URL: ${jobStatus?.final_url ? 'present' : 'missing'}`);
+    }
+  }, [jobStatus, activeStep, resultVideoUrl, stopPolling, pollingIntervalId]); // Added resultVideoUrl, stopPolling, pollingIntervalId
+  
   // Handle generation start
   const handleStartGeneration = async (manual = false) => {
     console.log("handleStartGeneration called with manual:", manual);
@@ -600,16 +652,15 @@ export default function VideoCreator() {
       setGeneratedJobId(null);
       setJobStatus(null);
       setResultVideoUrl(null);
-      stopPolling(); // Ensure any previous polling is stopped BEFORE setting new active step
-
       setActiveStep(manual ? "review" : "generating");
+      stopPolling();
       
       if (manual) {
-        setEditedScript(" "); 
-        setScriptLoaded(true); 
+        setEditedScript(" "); // Initialize with a space for manual mode
+        setScriptLoaded(true); // Mark script as "loaded"
       } else {
-        setEditedScript("");   
-        setScriptLoaded(false); 
+        setEditedScript("");   // Clear any previous script for auto mode
+        setScriptLoaded(false); // Ensure it loads the new script from backend for auto mode
       }
       
       const body = {
@@ -639,13 +690,18 @@ export default function VideoCreator() {
       // After successful generation request, decrement local credit count
       setUserCredits(prev => prev !== null ? prev - 1 : null);
       
-      startPollingJobStatus(result.job_id, token); // Start polling for the NEW job
+      // Start polling for status updates
+      // For manual mode, we don't start polling here, as no backend job is created yet.
+      // Polling will start if/when the user continues from the review step.
+      // However, the current logic enqueues for both, so polling is needed.
+      // If manual mode truly skipped initial backend call, this would change.
+      // For now, the backend receives the job for both, worker handles manual_script_mode.
+      startPollingJobStatus(result.job_id, token);
       
     } catch (error) {
       console.error("Generation start error:", error);
       toast.error(`Generation failed: ${(error as Error).message}`);
       setActiveStep("upload");
-      stopPolling(); // Stop polling on error too
     } finally {
       setIsGenerating(false);
     }
@@ -660,7 +716,7 @@ export default function VideoCreator() {
     
     setIsGenerating(true);
     setActiveStep("generating");
-    stopPolling(); // Stop any review step polling before continuing
+    stopPolling();
     
     try {
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
@@ -688,13 +744,13 @@ export default function VideoCreator() {
       
       toast.success("Generation continuing!");
       
-      startPollingJobStatus(generatedJobId, token); // Restart polling for continuation
+      // Start polling again
+      startPollingJobStatus(generatedJobId, token);
       
     } catch (error) {
       console.error("Generation continuation error:", error);
       toast.error(`Continuation failed: ${(error as Error).message}`);
       setActiveStep("review");
-      stopPolling(); // Stop polling on error
     } finally {
       setIsGenerating(false);
     }
@@ -910,16 +966,16 @@ export default function VideoCreator() {
 
   // Function to handle confirmed back action
   const handleConfirmBack = () => {
-    stopPolling(); // ESSENTIAL: Stop polling when user navigates away or cancels
     setActiveStep("upload");
-    setGeneratedJobId(null); 
-    setJobStatus(null); 
-    setResultVideoUrl(null);
-    setScriptLoaded(false);
-    setEditedScript(""); 
-    setManualScriptMode(false);
-    setShowVideoReadyNotification(false);
-    toast.info("Generation cancelled."); 
+    // Reset relevant states. Consider what needs resetting, e.g.:
+    // setGeneratedJobId(null); 
+    // setJobStatus(null); 
+    // setResultVideoUrl(null);
+    // setScriptLoaded(false);
+    // setEditedScript(""); // Or set to " " if that's the new default for manual
+    // stopPolling(); // Crucial if polling is active
+    // setManualScriptMode(false); // Or based on your flow
+    // toast.info("Generation cancelled."); // Optional user feedback
     setShowBackConfirmationModal(false);
   };
 

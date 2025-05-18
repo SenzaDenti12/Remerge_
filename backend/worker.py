@@ -261,9 +261,9 @@ def call_twelve_labs_summarize(video_url: str, custom_job_id: str) -> tuple[Opti
                         thumbnail_url = thumbnail_urls[0]
                         logging.info(f"[Job: {custom_job_id}] Extracted thumbnail URL: {thumbnail_url}")
                     else:
-                         logging.warning(f"[Job: {custom_job_id}][WARN] No thumbnail URLs found in hls data. Full hls_data: {hls_data}")
+                         logging.warning("[Job: {custom_job_id}][WARN] No thumbnail URLs found in hls data.")
                 else:
-                     logging.warning(f"[Job: {custom_job_id}][WARN] HLS data missing or not a dict in video metadata. Full video_metadata: {video_metadata}")
+                     logging.warning("[Job: {custom_job_id}][WARN] HLS data missing or not a dict in video metadata.")
                 # --- End Thumbnail Extraction ---
 
                 break # Exit polling loop once ready
@@ -700,17 +700,17 @@ def process_continue_job(redis_message_id: str, job_data: dict):
         if not verify_url_accessible(final_video_url):
             raise RuntimeError("Generated video URL did not become accessible.")
         logging.info(f"Job {custom_job_id} completed successfully. Final URL: {final_video_url}")
-
-        # Update Redis job status to completed with final URL before saving to Supabase
+        
+        # Update Redis with completed status and final video URL
         try:
             update_job_status(custom_job_id, {
                 "status": "completed", 
                 "stage": "finished",
                 "final_url": final_video_url
             })
-            logging.info(f"Updated job status to completed with final URL for job {custom_job_id}")
+            logging.info(f"[Job: {custom_job_id}] Updated Redis status to completed with final URL.")
         except Exception as e:
-            logging.error(f"[ERROR] Failed to update final job status for job {custom_job_id}: {e}")
+            logging.error(f"[ERROR] Failed to update final status in Redis: {e}")
         
         try:
             insert_data = {
@@ -718,7 +718,7 @@ def process_continue_job(redis_message_id: str, job_data: dict):
                 "video_url": final_video_url,
                 "job_id": custom_job_id,
                 "title": "Untitled Video",
-                "thumbnail_url": thumbnail_url if thumbnail_url and thumbnail_url.strip() else None
+                "thumbnail_url": None if not thumbnail_url or not thumbnail_url.strip() else thumbnail_url
             }
             db_response = supabase.table("generated_videos").insert(insert_data).execute()
             if db_response.data:
