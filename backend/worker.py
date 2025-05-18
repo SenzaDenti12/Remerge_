@@ -331,9 +331,9 @@ def call_twelve_labs_summarize(video_url: str, custom_job_id: str) -> tuple[Opti
 
 def generate_script(summary: str, user_id: str, custom_job_id: str) -> str:
     """Generates a meme script using OpenAI GPT-4o."""
-    logging.info(f"[Job: {custom_job_id}] Generating script for user {user_id}...")
-    system_prompt = "You are a witty meme creator. Given a summary of a video, you create a funny narrator-style script spoken by one person (no brackets or colons - the text should be fully speakable), suitable for a talking head meme."
-    user_prompt = f"Video Summary:\n```\n{summary}\n```\nGenerate a short, funny meme script based on this summary:"
+    logging.info(f"[Job: {custom_job_id}] Generating script for user {user_id} from summary...")
+    system_prompt = "You are a witty meme creator. Given a summary of a video, you create a funny narrator-style script spoken by one person. The script should be fully speakable (no parenthetical stage directions or narrator colons like 'Narrator:'). The script must be less than 900 characters long. Aim for engaging and concise content suitable for a talking head meme."
+    user_prompt = f"Video Summary:\n```\n{summary}\n```\nGenerate a short, funny meme script (less than 900 characters) based on this summary:"
 
     try:
         response = openai_client.chat.completions.create(
@@ -374,7 +374,7 @@ def call_lemon_slice(avatar_image_s3_key: str, script_text: str, voice_id: Optio
         logging.warning(f"[Job: {custom_job_id}][WARN] Script text exceeds 900 characters ({len(script_text)}). Truncating for LemonSlice.")
         script_text = script_text[:900]
     logging.info(f"[Job: {custom_job_id}] Script (first 100 chars for LemonSlice): {script_text[:100]}...")
-    logging.info(f"[Job: {custom_job_id}] Voice ID for LemonSlice: {voice_id if voice_id else 'Default (Sam)'}")
+    logging.info(f"[Job: {custom_job_id}] Voice ID: {voice_id if voice_id else 'Default (Sam)'}")
     
     if not LEMON_SLICE_API_KEY:
         logging.warning("Lemon Slice API Key missing, cannot proceed.")

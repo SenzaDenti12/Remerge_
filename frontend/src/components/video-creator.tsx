@@ -107,38 +107,42 @@ function ZeroCreditsModal({ onClose, onUpgrade }: { onClose: () => void, onUpgra
   );
 }
 
-// New Confirmation Modal Component for Navigating Back
-function NavigateBackConfirmModal({
+// New Back Confirmation Modal Component
+function BackConfirmationModal({
   onConfirm,
   onCancel,
+  isVisible,
 }: {
   onConfirm: () => void;
   onCancel: () => void;
+  isVisible: boolean;
 }) {
+  if (!isVisible) return null;
+
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
-      <Card className="w-full max-w-md animate-in fade-in-0 zoom-in-95 duration-300 border-destructive">
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <Card className="w-full max-w-md animate-in fade-in-0 zoom-in-95 duration-300">
         <CardHeader>
-          <CardTitle className="flex items-center text-xl text-destructive">
-            <AlertCircleIcon className="w-6 h-6 mr-2" />
-            Confirm Navigation
+          <CardTitle className="flex items-center text-2xl">
+            <AlertCircleIcon className="w-6 h-6 mr-2 text-destructive" />
+            Are you sure?
           </CardTitle>
-          <CardDescription className="text-destructive/90">
-            Going back now will stop the current video generation process.
+          <CardDescription>
+            Going back now will stop the current video generation process. 
+            Your progress will be lost, and if a generation credit was used, it will not be refunded.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <p className="mb-2">
-            You will lose any current progress, and the credit used for this generation may not be refunded.
+          <p className="mb-4">
+            Do you really want to go back and lose your current progress?
           </p>
-          <p className="font-semibold">Are you sure you want to go back and lose progress?</p>
         </CardContent>
-        <CardFooter className="flex justify-end gap-3">
-          <Button variant="outline" onClick={onCancel} className="text-muted-foreground">
-            Stay Here
+        <CardFooter className="flex justify-between">
+          <Button variant="outline" onClick={onCancel}>
+            No, Continue Generating
           </Button>
           <Button variant="destructive" onClick={onConfirm}>
-            Yes, Go Back & Lose Progress
+            Yes, Go Back
           </Button>
         </CardFooter>
       </Card>
@@ -191,8 +195,8 @@ export default function VideoCreator() {
   // Add state to track manual script mode
   const [manualScriptMode, setManualScriptMode] = useState(false);
   
-  // New Navigation Confirmation Modal state
-  const [showNavigateBackConfirmModal, setShowNavigateBackConfirmModal] = useState<boolean>(false);
+  // New state for back confirmation
+  const [showBackConfirmationModal, setShowBackConfirmationModal] = useState<boolean>(false);
   
   const supabase = createClient();
   const router = useRouter();
@@ -937,26 +941,19 @@ export default function VideoCreator() {
     }
   };
 
-  const handleConfirmNavigateBack = () => {
-    setShowNavigateBackConfirmModal(false);
+  // Function to handle confirmed back action
+  const handleConfirmBack = () => {
     setActiveStep("upload");
-    setManualScriptMode(false); // Reset manual mode flag
-    // Potentially stop polling if a job was active, though activeStep change might handle it
-    if (generatedJobId && (jobStatus?.status === 'processing' || jobStatus?.status === 'pending_review')) {
-      stopPolling(); 
-      // Optionally, you could send a request to the backend to attempt to cancel the job if possible,
-      // but this is complex and depends on backend support.
-      toast.warning("Generation process was stopped.");
-    }
-    setGeneratedJobId(null); // Clear job ID as we are abandoning it
-    setJobStatus(null);
-    setResultVideoUrl(null);
-    setEditedScript("");
-    setScriptLoaded(false);
-  };
-
-  const handleCancelNavigateBack = () => {
-    setShowNavigateBackConfirmModal(false);
+    // Reset relevant states. Consider what needs resetting, e.g.:
+    // setGeneratedJobId(null); 
+    // setJobStatus(null); 
+    // setResultVideoUrl(null);
+    // setScriptLoaded(false);
+    // setEditedScript(""); // Or set to " " if that's the new default for manual
+    // stopPolling(); // Crucial if polling is active
+    // setManualScriptMode(false); // Or based on your flow
+    // toast.info("Generation cancelled."); // Optional user feedback
+    setShowBackConfirmationModal(false);
   };
 
   return (
@@ -972,13 +969,12 @@ export default function VideoCreator() {
         />
       )}
     
-      {/* New Navigation Confirmation Modal */}
-      {showNavigateBackConfirmModal && (
-        <NavigateBackConfirmModal 
-          onConfirm={handleConfirmNavigateBack}
-          onCancel={handleCancelNavigateBack}
-        />
-      )}
+      {/* New Back Confirmation Modal Rendering */}
+      <BackConfirmationModal 
+        isVisible={showBackConfirmationModal}
+        onConfirm={handleConfirmBack}
+        onCancel={() => setShowBackConfirmationModal(false)}
+      />
     
       {/* Video Ready Notification Banner */}
       {showVideoReadyNotification && (
@@ -1228,7 +1224,7 @@ export default function VideoCreator() {
                   }}
                   maxLength={900}
                   className="h-48 w-full border-2 border-border/50 bg-card/50 text-base p-4 resize-none"
-                  placeholder={manualScriptMode && !scriptLoaded ? "Start typing your script here..." : "Loading script..."}
+                  placeholder={activeStep === "review" && jobStatus?.status === "pending_review" && !scriptLoaded && !manualScriptMode ? "Loading script from video analysis..." : (manualScriptMode && editedScript.trim() === "" ? "Start typing your script here or use AI enhance..." : "Edit your script here...")}
                 />
                 <div className="text-xs text-muted-foreground text-right mt-1">{editedScript.length} / 900 characters</div>
               </div>
@@ -1549,8 +1545,8 @@ export default function VideoCreator() {
             <div className="flex justify-between w-full">
               <Button 
                 onClick={() => {
-                  // Instead of direct navigation, show confirm modal
-                  setShowNavigateBackConfirmModal(true);
+                  // Instead of direct navigation, show confirmation
+                  setShowBackConfirmationModal(true);
                 }}
                 variant="outline"
               >

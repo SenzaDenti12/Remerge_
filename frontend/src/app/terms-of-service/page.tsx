@@ -10,19 +10,11 @@ export default function TermsOfServicePage() {
         </header>
 
         <article className="prose prose-lg dark:prose-invert mx-auto">
-          {/* Legal Review Reminder */}
-          <div className="p-4 mb-6 border-l-4 border-red-500 bg-red-500/10">
-            <h3 className="font-semibold text-red-700 dark:text-red-300">LAWYER'S ATTENTION REQUIRED:</h3>
-            <p className="text-red-600 dark:text-red-400 text-sm">
-              This document is an AI-generated draft and requires your thorough review, modification, and finalization
-              to ensure legal adequacy and compliance. Pay special attention to placeholders like
-              [Your Company Name], [Your Company Address], [Your Jurisdiction], and sections requiring specific business decisions.
-            </p>
-          </div>
+         
 
           <p className="lead">
             Welcome to ReMerge! These Terms of Service ("Terms") constitute a legally binding agreement made between you,
-            whether personally or on behalf of an entity (“you” or “User”) and <strong>[Your Company Name]</strong>, doing business as ReMerge
+            whether personally or on behalf of an entity (“you” or “User”) and <strong>[Remerge]</strong>, doing business as ReMerge
             ("ReMerge", “we”, “us”, or “our”), concerning your access to and use of the remerge.com website as well as any other media form,
             media channel, mobile website or mobile application related, linked, or otherwise connected thereto, and the AI-powered
             video generation services, tools, and features offered (collectively, the “Service”).
@@ -250,14 +242,13 @@ export default function TermsOfServicePage() {
 
           <h2>12. GOVERNING LAW AND DISPUTE RESOLUTION</h2>
           <p>
-            These Terms shall be governed by and construed in accordance with the laws of <strong>[Your Company\'s Registered Jurisdiction]</strong>,
+            These Terms shall be governed by and construed in accordance with the laws of <strong>[Massachusetts]</strong>,
             without regard to its conflict of law principles. Any legal suit, action, or proceeding arising out of or related to
             these Terms or the Service shall be instituted exclusively in the federal or state courts located in
-            <strong>[City, State of Your Company\'s Registered Jurisdiction]</strong>, and you irrevocably submit to the exclusive jurisdiction of such courts
+            <strong>[Boston, MA]</strong>, and you irrevocably submit to the exclusive jurisdiction of such courts
             in any such suit, action, or proceeding.
           </p>
           <p>
-            <strong>[LAWYER\'S NOTE: Consider adding an arbitration clause and class action waiver if appropriate for the business.]</strong>
           </p>
 
           <h2>13. CHANGES TO TERMS</h2>
@@ -296,9 +287,8 @@ export default function TermsOfServicePage() {
           <p>
             If you have any questions about these Terms, please contact us at:
             <br />
-            <strong>[Your Company Name, if different from ReMerge]</strong>
+            <strong>ReMerge</strong>
             <br />
-            <strong>[Your Company Address, if applicable]</strong>
             <br />
             Email: testremerge@gmail.com
           </p>

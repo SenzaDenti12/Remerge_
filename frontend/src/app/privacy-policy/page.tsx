@@ -10,18 +10,13 @@ export default function PrivacyPolicyPage() {
         </header>
 
         <article className="prose prose-lg dark:prose-invert mx-auto">
-          {/* Legal Review Reminder */}
           <div className="p-4 mb-6 border-l-4 border-red-500 bg-red-500/10">
-            <h3 className="font-semibold text-red-700 dark:text-red-300">LAWYER'S ATTENTION REQUIRED:</h3>
-            <p className="text-red-600 dark:text-red-400 text-sm">
-              This document is an AI-generated draft and requires your thorough review, modification, and finalization
-              to ensure legal adequacy and compliance, especially with regard to GDPR, CCPA, and other relevant data privacy laws.
-              Placeholders like [Your Company Name], [Your DPO Contact, if applicable] etc., must be completed.
-            </p>
+            
+              
           </div>
 
           <p className="lead">
-            <strong>[Your Company Name]</strong>, doing business as ReMerge ("ReMerge", "we", "us", "our"), is committed to protecting your privacy.
+            <strong>Remerge</strong>, doing business as ReMerge ("ReMerge", "we", "us", "our"), is committed to protecting your privacy.
             This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you visit our website
             remerge.com, including any other media form, media channel, mobile website, or mobile application related or connected
             thereto (collectively, the "Site") and use our AI-powered video generation services (the "Service"). Please read this
@@ -208,7 +203,6 @@ export default function PrivacyPolicyPage() {
             before processing your request.
           </p>
           <p>
-            <strong>[LAWYER\'S NOTE: This section needs significant review and expansion based on applicable laws like GDPR (detailing lawful bases for processing, international transfers, DPO contact if required, right to lodge a complaint with a supervisory authority) and CCPA (categories of PII collected/sold/shared, specific rights for CA residents). Consider a dedicated section for GDPR and CCPA if targeting users in those regions.]</strong>
           </p>
 
           <h2>7. INTERNATIONAL DATA TRANSFERS</h2>
@@ -225,7 +219,6 @@ export default function PrivacyPolicyPage() {
             adequate controls in place including the security of your data and other personal information.
           </p>
           <p>
-            <strong>[LAWYER\'S NOTE: If subject to GDPR, detail the lawful basis for transfer, e.g., Standard Contractual Clauses, Adequacy Decisions.]</strong>
           </p>
 
           <h2>8. CHILDREN'S PRIVACY</h2>
@@ -257,14 +250,11 @@ export default function PrivacyPolicyPage() {
           <p>
             If you have any questions or concerns about this Privacy Policy or our data practices, please contact us at:
             <br />
-            <strong>[Your Company Name, if different from ReMerge]</strong>
-            <br />
-            <strong>[Your Company Address, if applicable]</strong>
+            <strong>Remerge</strong>
             <br />
             Email: testremerge@gmail.com
           </p>
           <p>
-            <strong>[LAWYER\'S NOTE: If applicable, include Data Protection Officer (DPO) contact details here.]</strong>
           </p>
         </article>
 
