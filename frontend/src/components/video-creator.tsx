@@ -451,7 +451,7 @@ export default function VideoCreator() {
       
       const statusData = await response.json();
       console.log("[POLL STATUS] 📡 Raw status data received:", JSON.stringify(statusData));
-      setJobStatus(statusData); // Update jobStatus state immediately
+      setJobStatus({...statusData}); // Ensure new object reference to trigger effects reliably
       
       // MOST CRITICAL PART: Check for completed Creatomate video
       if (statusData.status === 'completed' && statusData.final_url) {
@@ -562,30 +562,37 @@ export default function VideoCreator() {
   // AGGRESSIVE STATE SYNC: Effect to force result view when job is complete and URL is available
   useEffect(() => {
     console.log("[EFFECT SYNC] Checking jobStatus for completion:", JSON.stringify(jobStatus));
-    if (jobStatus?.status === 'completed' && jobStatus?.final_url) {
+    if (jobStatus && jobStatus.status === 'completed' && jobStatus.final_url) { // Ensure jobStatus itself is not null
       console.log("[EFFECT SYNC] ✅ Job is COMPLETED with a final URL. Current activeStep:", activeStep);
-      if (activeStep !== "result") {
-        console.log("[EFFECT SYNC] Forcing activeStep to 'result' and setting resultVideoUrl.");
-        setResultVideoUrl(jobStatus.final_url); // Ensure URL is set first
-        setActiveStep("result");
-        setShowVideoReadyNotification(true); // Ensure notification banner shows
-        toast.info("Video ready! Transitioning to results by EFFECT SYNC.", { duration: 5000 });
-      } else {
-        console.log("[EFFECT SYNC] Already in result step, ensuring resultVideoUrl is current.");
-        if (resultVideoUrl !== jobStatus.final_url) {
-          setResultVideoUrl(jobStatus.final_url); // Update if somehow different
-        }
+      
+      // State updates batched by React, but sequence can matter for logic
+      let urlChanged = false;
+      if (resultVideoUrl !== jobStatus.final_url) {
+        setResultVideoUrl(jobStatus.final_url);
+        urlChanged = true;
       }
-      // We might also want to stop polling here again, just in case
+      
+      if (activeStep !== "result") {
+        setActiveStep("result");
+      }
+
+      // Only show notification if it wasn't shown or if URL actually changed to new video
+      if (!showVideoReadyNotification || urlChanged) { 
+        setShowVideoReadyNotification(true); 
+      }
+        
+      // toast.info("Video ready! Transitioning to results by EFFECT SYNC.", { duration: 5000 });
+      // Using success toast from polling function if it also catches completion.
+      
       if (pollingIntervalId) {
-        console.log("[EFFECT SYNC] Stopping any lingering polling.");
+        console.log("[EFFECT SYNC] Stopping any lingering polling in effect.");
         stopPolling();
       }
     } else {
-      console.log("[EFFECT SYNC] Job not yet completed or final_url missing.",
-                  `Status: ${jobStatus?.status}, URL: ${jobStatus?.final_url ? 'present' : 'missing'}`);
+      // console.log("[EFFECT SYNC] Job not yet completed or final_url missing.",
+      //             `Status: ${jobStatus?.status}, URL: ${jobStatus?.final_url ? 'present' : 'missing'}`);
     }
-  }, [jobStatus, activeStep, resultVideoUrl, stopPolling, pollingIntervalId]); // Added resultVideoUrl, stopPolling, pollingIntervalId
+  }, [jobStatus, activeStep, resultVideoUrl, stopPolling, pollingIntervalId, showVideoReadyNotification]);
   
   // Handle generation start
   const handleStartGeneration = async (manual = false) => {

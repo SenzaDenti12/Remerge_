@@ -261,9 +261,9 @@ def call_twelve_labs_summarize(video_url: str, custom_job_id: str) -> tuple[Opti
                         thumbnail_url = thumbnail_urls[0]
                         logging.info(f"[Job: {custom_job_id}] Extracted thumbnail URL: {thumbnail_url}")
                     else:
-                         logging.warning("[Job: {custom_job_id}][WARN] No thumbnail URLs found in hls data.")
+                         logging.warning(f"[Job: {custom_job_id}][WARN] No thumbnail URLs found in hls data. Full hls_data: {hls_data}")
                 else:
-                     logging.warning("[Job: {custom_job_id}][WARN] HLS data missing or not a dict in video metadata.")
+                     logging.warning(f"[Job: {custom_job_id}][WARN] HLS data missing or not a dict in video metadata. Full video_metadata: {video_metadata}")
                 # --- End Thumbnail Extraction ---
 
                 break # Exit polling loop once ready

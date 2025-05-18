@@ -20,6 +20,7 @@ from worker import update_job_status # <-- Import the function
 from openai import OpenAI, OpenAIError # Import OpenAI client
 import time
 import datetime
+import logging # Make sure logging is imported if not already
 
 load_dotenv() # Ensure env vars are loaded
 
@@ -257,6 +258,7 @@ async def ensure_user_profile(user_id: str, initial_credits: int = 1) -> None:
     """
     Creates or updates a user profile. New users always get 1 initial credit.
     If an existing free user has the old default of 3 credits, they are set to 1.
+    Also handles users with null plan/status or 0 credits on a free plan.
     """
     try:
         # Check if profile exists
@@ -264,7 +266,7 @@ async def ensure_user_profile(user_id: str, initial_credits: int = 1) -> None:
 
         if not profile_response.data:
             # Create new profile with 1 credit
-            print(f"[USER_SETUP] Creating new profile for user {user_id} with 1 credit")
+            logging.info(f"[USER_SETUP] Creating new profile for user {user_id} with 1 credit")
             supabase.table('profiles').insert({
                 'id': user_id,
                 'credits': 1, # Always 1 for new users
@@ -272,32 +274,35 @@ async def ensure_user_profile(user_id: str, initial_credits: int = 1) -> None:
                 'subscription_plan': 'free' # Explicitly set plan to free
             }).execute()
         else:
-            # Profile exists, check if it's a free user with the old 3 credits
-            print(f"[USER_SETUP] Profile exists for user {user_id}")
+            # Profile exists
+            logging.info(f"[USER_SETUP] Profile exists for user {user_id}")
             current_credits = profile_response.data.get('credits')
             subscription_status = profile_response.data.get('subscription_status')
             subscription_plan = profile_response.data.get('subscription_plan')
 
-            # If this is a free account (by status or plan) and has exactly 3 credits, update to 1
             is_free_account = (not subscription_status or subscription_status == 'free') and \
                               (not subscription_plan or subscription_plan == 'free')
 
             if current_credits == 3 and is_free_account:
-                print(f"[USER_SETUP] Updating user {user_id} from 3 credits to 1 credit (fixing old default for free user)")
+                logging.info(f"[USER_SETUP] Updating user {user_id} from 3 credits to 1 credit (fixing old default for free user)")
                 supabase.table('profiles').update({
                     'credits': 1
                 }).eq('id', user_id).execute()
-            elif subscription_plan is None and subscription_status is None:
-                # If plan and status are completely missing, initialize them and set credits to 1
-                print(f"[USER_SETUP] Initializing plan/status and setting credits to 1 for user {user_id}")
+            elif subscription_plan is None and subscription_status is None and current_credits != 1:
+                logging.info(f"[USER_SETUP] Initializing plan/status and setting credits to 1 for user {user_id} (was {current_credits})")
                 supabase.table('profiles').update({
                     'credits': 1,
                     'subscription_status': 'free',
                     'subscription_plan': 'free'
                 }).eq('id', user_id).execute()
+            elif current_credits == 0 and is_free_account:
+                logging.info(f"[USER_SETUP] User {user_id} is free and has 0 credits. Setting to 1 credit.")
+                supabase.table('profiles').update({
+                    'credits': 1
+                }).eq('id', user_id).execute()
 
     except Exception as e:
-        print(f"[ERROR] Error ensuring user profile for {user_id}: {e}")
+        logging.error(f"[ERROR] Error ensuring user profile for {user_id}: {e}", exc_info=True)
         # Don't raise exception, just log it - this is a background operation
 
 @app.post("/api/auth/callback")
@@ -306,7 +311,7 @@ async def auth_callback(user_id: str = Depends(get_current_user_id)):
     Endpoint to be called after successful authentication.
     Ensures the user has a profile with the correct initial free credits.
     """
-    await ensure_user_profile(user_id, initial_credits=1)
+    await ensure_user_profile(user_id) # initial_credits defaults to 1
     return {"success": True}
 
 # --- Updated Generate Meme Endpoint --- 
@@ -949,7 +954,7 @@ async def regenerate_script(
 Your task is to modify an existing script based on the user's request.
 Keep the spirit of the original script while incorporating the requested changes.
 The output should be purely the modified script without any explanations, notes, or formatting.
-The final script must be less than 900 characters long. Keep the length similar to the original script if possible, but do not exceed 900 characters."""
+The final script must be less than 900 characters long. Keep the length similar to the original script if possible, but do not exceed 900 characters. Do not include stage directions, titles, or other non-dialogue text."""
 
         # Create user message that includes the current script and the modification request
         user_message = f"""CURRENT SCRIPT:
