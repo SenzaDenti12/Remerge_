@@ -28,6 +28,7 @@ import {
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { navigationGuard } from '@/lib/navigationLock'; // Adjust path if necessary
 
 // Simple XHR upload function
 async function uploadFileToS3(file: File, token: string, uploadType: 'video' | 'avatar', duration?: number): Promise<{ upload_url: string, object_key: string }> {
@@ -968,14 +969,35 @@ export default function VideoCreator() {
     }
   };
 
-  // Handle navigation attempts during generation
-  const handleNavigation = (path: string) => {
-    // Only show confirmation if we're in the middle of generation
-    if (activeStep === "generating" || activeStep === "review") {
-      setNavigateTo(path);
-      setShowNavigationModal(true);
+  // Effect to set/unset navigation lock based on activeStep
+  useEffect(() => {
+    const isCriticalStep = activeStep === "generating" || activeStep === "review";
+    console.log(`[VC useEffect/activeStep] Active step changed to: ${activeStep}, IsCritical: ${isCriticalStep}`);
+    if (isCriticalStep) {
+      navigationGuard.setLock(
+        true,
+        "Leave video generation?", // Title for the modal
+        "Navigating away will interrupt the current video generation process. Any progress will be lost, and if a generation credit was used, it will not be refunded." // Message for the modal
+      );
     } else {
-      // Otherwise, navigate directly
+      navigationGuard.setLock(false);
+    }
+    // Cleanup function to unlock navigation when the component unmounts or activeStep changes from critical
+    return () => {
+      navigationGuard.setLock(false);
+    };
+  }, [activeStep]);
+
+  // Internal navigation handler (for links/buttons within VideoCreator itself)
+  const handleNavigation = (path: string) => {
+    console.log(`[VC handleNavigation] Attempting internal navigation to: "${path}". Current activeStep: "${activeStep}"`);
+    // Check its own critical state condition, not the global lock directly, to show its specific modal
+    if (activeStep === "generating" || activeStep === "review") {
+      console.log(`[VC handleNavigation] Critical step. Showing internal modal for path: "${path}"`);
+      setNavigateTo(path);
+      setShowNavigationModal(true); // This is the VideoCreator's local modal
+    } else {
+      console.log(`[VC handleNavigation] Non-critical step. Navigating directly to: "${path}"`);
       router.push(path);
     }
   };
