@@ -112,10 +112,14 @@ function BackConfirmationModal({
   onConfirm,
   onCancel,
   isVisible,
+  message = "Going back now will stop the current video generation process. Your progress will be lost, and if a generation credit was used, it will not be refunded.",
+  title = "Are you sure?",
 }: {
   onConfirm: () => void;
   onCancel: () => void;
   isVisible: boolean;
+  message?: string;
+  title?: string;
 }) {
   if (!isVisible) return null;
 
@@ -125,24 +129,23 @@ function BackConfirmationModal({
         <CardHeader>
           <CardTitle className="flex items-center text-2xl">
             <AlertCircleIcon className="w-6 h-6 mr-2 text-destructive" />
-            Are you sure?
+            <span>{title}</span>
           </CardTitle>
           <CardDescription>
-            Going back now will stop the current video generation process. 
-            Your progress will be lost, and if a generation credit was used, it will not be refunded.
+            {message}
           </CardDescription>
         </CardHeader>
         <CardContent>
           <p className="mb-4">
-            Do you really want to go back and lose your current progress?
+            Do you really want to leave and lose your current progress?
           </p>
         </CardContent>
         <CardFooter className="flex justify-between">
           <Button variant="outline" onClick={onCancel}>
-            No, Continue Generating
+            No, Stay on Page
           </Button>
           <Button variant="destructive" onClick={onConfirm}>
-            Yes, Go Back
+            Yes, Leave Page
           </Button>
         </CardFooter>
       </Card>
@@ -195,8 +198,9 @@ export default function VideoCreator() {
   // Add state to track manual script mode
   const [manualScriptMode, setManualScriptMode] = useState(false);
   
-  // New state for back confirmation
-  const [showBackConfirmationModal, setShowBackConfirmationModal] = useState<boolean>(false);
+  // Navigation states
+  const [navigateTo, setNavigateTo] = useState<string | null>(null);
+  const [showNavigationModal, setShowNavigationModal] = useState(false);
   
   const supabase = createClient();
   const router = useRouter();
@@ -964,20 +968,50 @@ export default function VideoCreator() {
     }
   };
 
-  // Function to handle confirmed back action
-  const handleConfirmBack = () => {
-    setActiveStep("upload");
-    // Reset relevant states. Consider what needs resetting, e.g.:
-    // setGeneratedJobId(null); 
-    // setJobStatus(null); 
-    // setResultVideoUrl(null);
-    // setScriptLoaded(false);
-    // setEditedScript(""); // Or set to " " if that's the new default for manual
-    // stopPolling(); // Crucial if polling is active
-    // setManualScriptMode(false); // Or based on your flow
-    // toast.info("Generation cancelled."); // Optional user feedback
-    setShowBackConfirmationModal(false);
+  // Handle navigation attempts during generation
+  const handleNavigation = (path: string) => {
+    // Only show confirmation if we're in the middle of generation
+    if (activeStep === "generating" || activeStep === "review") {
+      setNavigateTo(path);
+      setShowNavigationModal(true);
+    } else {
+      // Otherwise, navigate directly
+      router.push(path);
+    }
   };
+
+  // Handle confirmed navigation
+  const handleConfirmNavigation = () => {
+    if (navigateTo === '/logout') {
+      // Special case for logout
+      supabase.auth.signOut().then(() => {
+        router.push('/');
+        toast.success("Logged out successfully");
+      });
+    } else if (navigateTo) {
+      router.push(navigateTo);
+    } else {
+      setActiveStep("upload");
+    }
+    setShowNavigationModal(false);
+  };
+
+  // Replace the existing BackConfirmationModal rendering with this
+  useEffect(() => {
+    // Prevent navigation via browser back button during generation
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (activeStep === "generating" || activeStep === "review") {
+        e.preventDefault();
+        e.returnValue = "Changes you made may not be saved.";
+        return "Changes you made may not be saved.";
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [activeStep]);
 
   return (
     <div className="space-y-8">
@@ -987,16 +1021,18 @@ export default function VideoCreator() {
           onClose={() => setShowZeroCreditsModal(false)}
           onUpgrade={() => {
             setShowZeroCreditsModal(false);
-            router.push('/billing');
+            handleNavigation('/billing');
           }}
         />
       )}
     
-      {/* New Back Confirmation Modal Rendering */}
+      {/* Navigation Confirmation Modal */}
       <BackConfirmationModal 
-        isVisible={showBackConfirmationModal}
-        onConfirm={handleConfirmBack}
-        onCancel={() => setShowBackConfirmationModal(false)}
+        isVisible={showNavigationModal}
+        onConfirm={handleConfirmNavigation}
+        onCancel={() => setShowNavigationModal(false)}
+        title="Leave this page?"
+        message="Navigating away will interrupt the current video generation process. Any progress will be lost, and if a generation credit was used, it will not be refunded."
       />
     
       {/* Video Ready Notification Banner */}
@@ -1026,7 +1062,16 @@ export default function VideoCreator() {
       <Card className="border-border/30 bg-card/70 backdrop-blur-md shadow-lg">
         <CardHeader className="border-b border-border/20">
           <div className="flex items-center justify-between">
-            <CardTitle className="text-2xl">Video Creation</CardTitle>
+            <div className="flex items-center space-x-4">
+              <CardTitle 
+                className="text-2xl cursor-pointer hover:text-primary transition-colors"
+                onClick={() => handleNavigation('/')}
+              >
+                ReMerge
+              </CardTitle>
+              <span className="text-muted-foreground">|</span>
+              <span className="text-muted-foreground">Video Creation</span>
+            </div>
             <div className="flex items-center space-x-1 rounded-full bg-muted/50 px-3 py-1 text-xs font-medium">
               <div className={`size-2 rounded-full ${activeStep === "upload" ? "bg-primary" : "bg-muted-foreground/30"}`} />
               <div className={`size-2 rounded-full ${activeStep === "review" ? "bg-primary" : "bg-muted-foreground/30"}`} />
@@ -1040,6 +1085,45 @@ export default function VideoCreator() {
             {activeStep === "generating" && "Your video is being generated"}
             {activeStep === "result" && "Your video is ready to view and download"}
           </CardDescription>
+          
+          <div className="flex items-center space-x-3 mt-2">
+            <span 
+              className="text-sm text-muted-foreground hover:text-primary cursor-pointer transition-colors"
+              onClick={() => handleNavigation('/dashboard')}
+            >
+              Dashboard
+            </span>
+            <span 
+              className="text-sm text-muted-foreground hover:text-primary cursor-pointer transition-colors"
+              onClick={() => handleNavigation('/pricing')}
+            >
+              Pricing
+            </span>
+            <span 
+              className="text-sm text-muted-foreground hover:text-primary cursor-pointer transition-colors"
+              onClick={() => handleNavigation('/')}
+            >
+              Home
+            </span>
+            <span 
+              className="text-sm text-muted-foreground hover:text-primary cursor-pointer transition-colors"
+              onClick={() => {
+                if (activeStep === "generating" || activeStep === "review") {
+                  // Show confirmation dialog before logging out during active generation
+                  setNavigateTo('/logout');
+                  setShowNavigationModal(true);
+                } else {
+                  // Safe to logout directly
+                  supabase.auth.signOut().then(() => {
+                    router.push('/');
+                    toast.success("Logged out successfully");
+                  });
+                }
+              }}
+            >
+              Logout
+            </span>
+          </div>
         </CardHeader>
         
         <CardContent className="pt-6">
@@ -1428,7 +1512,12 @@ export default function VideoCreator() {
                 </p>
                 {userPlan === "free" && (
                   <p className="text-xs text-primary mt-1">
-                    <Link href="/billing" className="underline">Upgrade your plan</Link> to unlock additional voice options
+                    <span 
+                      className="underline cursor-pointer"
+                      onClick={() => handleNavigation('/billing')}
+                    >
+                      Upgrade your plan
+                    </span> to unlock additional voice options
                   </p>
                 )}
               </div>
@@ -1515,33 +1604,46 @@ export default function VideoCreator() {
                 </div>
               )}
               
-              <div className="flex flex-wrap items-center gap-3">
-                <Button 
-                  onClick={handleDownloadVideo}
-                  disabled={!resultVideoUrl}
-                  className="flex items-center"
-                >
-                  <DownloadIcon className="mr-2 h-4 w-4" />
-                  <span>Download</span>
-                </Button>
+              <div className="flex flex-wrap justify-between gap-3">
+                <div className="flex flex-wrap gap-3">
+                  <Button 
+                    onClick={handleDownloadVideo}
+                    disabled={!resultVideoUrl}
+                    className="flex items-center"
+                  >
+                    <DownloadIcon className="mr-2 h-4 w-4" />
+                    <span>Download</span>
+                  </Button>
+                  
+                  <Button 
+                    variant="outline"
+                    onClick={() => resultVideoUrl && window.open(resultVideoUrl, '_blank')}
+                    disabled={!resultVideoUrl}
+                    className="flex items-center"
+                  >
+                    <ExternalLinkIcon className="mr-2 h-4 w-4" />
+                    <span>Open in New Tab</span>
+                  </Button>
+                </div>
                 
-                <Button 
-                  variant="outline"
-                  onClick={() => resultVideoUrl && window.open(resultVideoUrl, '_blank')}
-                  disabled={!resultVideoUrl}
-                  className="flex items-center"
-                >
-                  <ExternalLinkIcon className="mr-2 h-4 w-4" />
-                  <span>Open in New Tab</span>
-                </Button>
-                
-                <Button 
-                  variant="outline"
-                  onClick={() => setActiveStep("upload")}
-                  className="ml-auto"
-                >
-                  Create Another Video
-                </Button>
+                <div className="flex flex-wrap gap-3">
+                  <Button 
+                    variant="outline"
+                    onClick={() => setActiveStep("upload")}
+                    className="flex items-center"
+                  >
+                    <RefreshCwIcon className="mr-2 h-4 w-4" />
+                    <span>Create Another Video</span>
+                  </Button>
+                  
+                  <Button 
+                    variant="default"
+                    onClick={() => handleNavigation('/dashboard')}
+                    className="bg-gradient-primary hover:bg-gradient-primary-hover"
+                  >
+                    Back to Dashboard
+                  </Button>
+                </div>
               </div>
             </div>
           )}
@@ -1568,8 +1670,9 @@ export default function VideoCreator() {
             <div className="flex justify-between w-full">
               <Button 
                 onClick={() => {
-                  // Instead of direct navigation, show confirmation
-                  setShowBackConfirmationModal(true);
+                  // Show confirmation but use the navigation handler now
+                  setNavigateTo(null); // null means go back to upload step
+                  setShowNavigationModal(true);
                 }}
                 variant="outline"
               >
@@ -1595,8 +1698,8 @@ export default function VideoCreator() {
                 className="bg-gradient-primary hover:bg-gradient-primary-hover"
               >
                 <span className="flex items-center gap-2">
-                  <RefreshCwIcon className="h-4 w-4" />
                   <span>View Video Now</span>
+                  <ArrowRightIcon className="h-4 w-4" />
                 </span>
               </Button>
             </div>
