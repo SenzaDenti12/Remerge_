@@ -700,6 +700,18 @@ def process_continue_job(redis_message_id: str, job_data: dict):
         if not verify_url_accessible(final_video_url):
             raise RuntimeError("Generated video URL did not become accessible.")
         logging.info(f"Job {custom_job_id} completed successfully. Final URL: {final_video_url}")
+
+        # Update Redis job status to completed with final URL before saving to Supabase
+        try:
+            update_job_status(custom_job_id, {
+                "status": "completed", 
+                "stage": "finished",
+                "final_url": final_video_url
+            })
+            logging.info(f"Updated job status to completed with final URL for job {custom_job_id}")
+        except Exception as e:
+            logging.error(f"[ERROR] Failed to update final job status for job {custom_job_id}: {e}")
+        
         try:
             insert_data = {
                 "user_id": user_id,
