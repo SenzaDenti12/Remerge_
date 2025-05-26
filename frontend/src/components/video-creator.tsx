@@ -1035,6 +1035,18 @@ export default function VideoCreator() {
     };
   }, [activeStep]);
 
+  // Effect to hide global header while in script review step
+  useEffect(() => {
+    const body = document.body;
+    if (activeStep === "review") {
+      body.classList.add("hide-main-header");
+    } else {
+      body.classList.remove("hide-main-header");
+    }
+    // Cleanup on unmount
+    return () => body.classList.remove("hide-main-header");
+  }, [activeStep]);
+
   return (
     <div className="space-y-8">
       {/* Zero Credits Modal */}

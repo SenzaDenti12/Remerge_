@@ -11,8 +11,8 @@ export default function Home() {
   const { user, isLoading } = useAuth();
   
   // Determine the destination for the "Start Creating" button
-  const createButtonDestination = user ? '/dashboard' : '/login?return_to=/generate'
-  const createButtonText = user ? 'Go to Dashboard' : 'Start Creating for Free'
+  const createButtonDestination = user ? '/generate' : '/login?return_to=/generate'
+  const createButtonText = user ? 'Create New Video' : 'Create Your First Video – Free'
 
   // Don't render the main content until auth status is known
   if (isLoading) {
@@ -25,20 +25,17 @@ export default function Home() {
       <div className="flex flex-col lg:flex-row items-center gap-16 min-h-[calc(100vh-20rem)]">
         <div className="flex-1 text-center lg:text-left space-y-8">
           <div className="space-y-4">
-            <h1 className="text-5xl sm:text-6xl md:text-7xl font-extrabold tracking-tight glow-text leading-tight">
-              Create <span className="text-gradient">Viral Videos</span> with AI
+            <h1 className="text-5xl sm:text-6xl md:text-7xl font-extrabold tracking-tight leading-tight">
+              Turn <span className="text-gradient">Any Portrait</span> into a Talking-Head Video
             </h1>
             <p className="text-xl md:text-2xl text-muted-foreground max-w-3xl">
-              Transform your content into engaging videos for social media with advanced AI technology
+              ReMerge analyses your footage, writes the script, records the voiceover and lip-syncs the result—<br className="hidden md:inline"/>all in under three minutes.
             </p>
           </div>
           
           <div className="text-xl max-w-2xl space-y-4">
             <p>
-              <span className="font-semibold text-primary">Create talking-head videos in just two clicks.</span> Upload an avatar to animate and an accompanying video - we'll handle the rest.
-            </p>
-            <p>
-              Just upload the avatar you want to animate and an accompanying video - ReMerge does all the hard work. Creating viral shorts has never been easier!
+              <span className="font-semibold text-primary">Create studio-quality clips in two clicks.</span> Upload a selfie and the video you want commentary on. We handle everything else—script, voice, animation.
             </p>
             <p>
               Perfect for <span className="text-primary">Instagram</span>, <span className="text-primary">TikTok</span>, and <span className="text-primary">YouTube Shorts</span>.
@@ -64,7 +61,7 @@ export default function Home() {
             </div>
           </div>
           
-          <div className="flex flex-col sm:flex-row gap-5 pt-4 justify-center lg:justify-start">
+          <div className="flex flex-col sm:flex-row gap-6 pt-6 justify-center lg:justify-start">
             <Link href={createButtonDestination}>
               <Button variant="default" size="lg" className="px-8 py-6 text-lg">{createButtonText}</Button>
             </Link>
@@ -149,14 +146,17 @@ export default function Home() {
             <div className="h-12 w-12 rounded-full bg-primary/20 flex items-center justify-center mb-4">
               <span className="text-xl font-bold text-primary">3</span>
             </div>
-            <h3 className="text-xl font-semibold mb-2">Get Your Meme</h3>
-            <p className="text-muted-foreground">Our AI analyzes the video, creates a script, and animates your avatar</p>
+            <h3 className="text-xl font-semibold mb-2">Publish Everywhere</h3>
+            <p className="text-muted-foreground">Download the finished MP4 or post straight to TikTok, Reels and Shorts.</p>
           </div>
         </div>
         
-        <div className="text-center mt-12">
+        <div className="text-center mt-14 flex flex-col sm:flex-row gap-6 justify-center">
           <Link href="/demo">
-            <Button variant="outline" size="lg">See a Demo</Button>
+            <Button variant="outline" size="lg">Watch Demo</Button>
+          </Link>
+          <Link href="/billing">
+            <Button variant="default" size="lg">View Pricing</Button>
           </Link>
         </div>
       </div>

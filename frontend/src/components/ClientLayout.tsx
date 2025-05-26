@@ -11,11 +11,16 @@ export default function ClientLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter(); // Initialize router
 
-  // Determine destinations for nav links based on auth status
+  /* -------- Dynamic nav destinations -------- */
   const dashboardLink = user ? "/dashboard" : "/login?return_to=/dashboard";
-  const generateLink = user ? "/generate" : "/login?return_to=/generate"; 
-  const billingLink = "/billing"; // Billing/pricing is always accessible
-  
+  const createLink    = user ? "/generate"  : "/login?return_to=/generate"; 
+  const pricingLink   = "/billing"; // Public
+  const demoLink      = "/demo";
+
+  // CTA label & link depending on auth state
+  const ctaLabel = user ? "Upgrade" : "Get Started";
+  const ctaHref  = user ? "/billing" : "/login?return_to=/generate";
+
   // Handle logout
   const handleLogout = async () => {
     await signOut();
@@ -58,36 +63,21 @@ export default function ClientLayout({ children }: { children: ReactNode }) {
             </div>
           </Link>
           
-          <nav className="hidden md:flex items-center space-x-8">
-            <Link href={dashboardLink} className="text-foreground/80 hover:text-foreground transition font-medium">
-              Dashboard
+          <nav className="hidden md:flex items-center gap-8">
+            <Link href={createLink} className="text-foreground/80 hover:text-primary transition font-medium">Create</Link>
+            <Link href={pricingLink} className="text-foreground/80 hover:text-primary transition font-medium">Pricing</Link>
+            <Link href={demoLink} className="text-foreground/80 hover:text-primary transition font-medium">Demo</Link>
+            {user && (
+              <Link href={dashboardLink} className="text-foreground/80 hover:text-primary transition font-medium">Dashboard</Link>
+            )}
+
+            {/* Primary CTA */}
+            <Link href={ctaHref} className="px-5 py-2 rounded-lg bg-gradient-primary hover:bg-gradient-primary-hover text-white font-medium shadow-md hover:shadow-lg">
+              {ctaLabel}
             </Link>
-            <Link href={generateLink} className="text-foreground/80 hover:text-foreground transition font-medium">
-              Create Video
-            </Link>
-            <Link href={billingLink} className="text-foreground/80 hover:text-foreground transition font-medium">
-              Pricing
-            </Link>
-            
-            {user ? (
-              <>
-                {/* Optional: Link to an account page */}
-                {/* <Link href="/account" className="text-foreground/80 hover:text-foreground transition font-medium">Account</Link> */}
-                <Button 
-                  onClick={handleLogout} 
-                  variant="outline" 
-                  className="px-5 py-2 rounded-lg font-medium shadow-md hover:shadow-lg"
-                >
-                  Logout
-                </Button>
-              </>
-            ) : (
-              <Link 
-                href="/login?return_to=/generate"
-                className="px-5 py-2 rounded-lg bg-gradient-primary hover:bg-gradient-primary-hover transition-all font-medium text-white shadow-md hover:shadow-lg"
-              >
-                Get Started
-              </Link>
+
+            {user && (
+              <Button onClick={handleLogout} variant="ghost" className="ml-2">Logout</Button>
             )}
           </nav>
           
@@ -120,8 +110,8 @@ export default function ClientLayout({ children }: { children: ReactNode }) {
                 <h4 className="font-semibold mb-4 text-lg">Platform</h4>
                 <ul className="space-y-3 text-muted-foreground">
                   <li><Link href={dashboardLink} className="hover:text-primary transition-colors">Dashboard</Link></li>
-                  <li><Link href={generateLink} className="hover:text-primary transition-colors">Create Video</Link></li>
-                  <li><Link href={user ? "/demo" : "/login?return_to=/demo"} className="hover:text-primary transition-colors">Demo</Link></li>
+                  <li><Link href={createLink} className="hover:text-primary transition-colors">Create Video</Link></li>
+                  <li><Link href={demoLink} className="hover:text-primary transition-colors">Demo</Link></li>
                 </ul>
               </div>
               <div>

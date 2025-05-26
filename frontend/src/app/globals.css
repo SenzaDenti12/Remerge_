@@ -306,3 +306,7 @@
 ::-webkit-scrollbar-thumb:hover {
   background: var(--secondary);
 }
+
+body.hide-main-header header {
+  display: none !important;
+}
