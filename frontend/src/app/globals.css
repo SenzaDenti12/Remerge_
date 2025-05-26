@@ -45,94 +45,107 @@
 }
 
 :root {
-  /* Main theme variables */
-  --magenta: #fb27ff;
-  --cyan: #00ceff;
-  --magenta-dark: #c310c6;
-  --cyan-dark: #0099c2;
-  --gradient-primary: linear-gradient(135deg, var(--magenta) 0%, var(--cyan) 100%);
-  --gradient-primary-hover: linear-gradient(135deg, var(--magenta-dark) 0%, var(--cyan-dark) 100%);
-  
+  /* ===== Brand Palette & Gradient (Kapwing-style refresh) ===== */
+  --brand-primary: #6366f1; /* Indigo */
+  --brand-primary-dark: #4f46e5;
+  --brand-secondary: #3b82f6; /* Blue */
+  --brand-secondary-dark: #2563eb;
+
+  /* Updated gradient using the new brand colors */
+  --gradient-primary: linear-gradient(135deg, var(--brand-primary) 0%, var(--brand-secondary) 100%);
+  --gradient-primary-hover: linear-gradient(135deg, var(--brand-primary-dark) 0%, var(--brand-secondary-dark) 100%);
+
+  /* Radius */
   --radius: 0.75rem;
-  
-  /* Light theme (not actively used but kept for reference) */
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+
+  /* ===== Light (default) palette ===== */
+  --background: #ffffff;                /* page background */
+  --foreground: #111827;                /* high-contrast text */
+
+  --card: #ffffff;                      /* surfaces */
+  --card-foreground: var(--foreground);
+  --popover: #ffffff;
+  --popover-foreground: var(--foreground);
+
+  --primary: var(--brand-primary);
+  --primary-foreground: #ffffff;
+  --secondary: var(--brand-secondary);
+  --secondary-foreground: #ffffff;
+
+  --muted: #f3f4f6;                     /* subtle grey */
+  --muted-foreground: #6b7280;
+  --accent: rgba(99,102,241,0.1);       /* translucent primary for hovers */
+  --accent-foreground: var(--primary);
+
+  --destructive: #ef4444;               /* red */
+  --destructive-foreground: #ffffff;
+
+  --border: #e5e7eb;                    /* 2 px border colour */
+  --input: #f9fafb;                     /* input background */
+  --ring: rgba(99,102,241,0.4);
+
+  /* Charts (keep five distinct hues) */
+  --chart-1: var(--brand-primary);
+  --chart-2: var(--brand-secondary);
+  --chart-3: #10b981;                   /* emerald */
+  --chart-4: #f59e0b;                   /* amber  */
+  --chart-5: #ec4899;                   /* pink   */
+
+  /* Sidebar (if used) */
+  --sidebar: var(--background);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: var(--accent);
+  --sidebar-accent-foreground: var(--accent-foreground);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
+
+  /* Box-shadow glow helpers used by Tailwind utilities */
+  --primary-glow: 235 86% 67%;     /* Indigo glow */
+  --secondary-glow: 211 90% 65%;   /* Blue glow */
 }
 
 /* Dark theme - this is the primary theme we're enhancing */
 .dark {
-  /* Core Colors */
-  --background: #0a0c10;
-  --foreground: #ffffff;
-  
-  /* Primary Colors - Based on specified brand colors */
-  --primary: #fb27ff; /* Magenta as specified */
+  /* The ".dark" selector is kept because the project currently mounts it on <html>. We repurpose it as the primary (light) theme to avoid a breaking rename. */
+
+  /* Core */
+  --background: #ffffff;
+  --foreground: #111827;
+
+  /* Surfaces */
+  --card: #ffffff;
+  --card-foreground: var(--foreground);
+  --popover: #ffffff;
+  --popover-foreground: var(--foreground);
+
+  /* Brand */
+  --primary: var(--brand-primary);
   --primary-foreground: #ffffff;
-  
-  /* Secondary Colors */
-  --secondary: #00ceff; /* Cyan as specified */
+  --secondary: var(--brand-secondary);
   --secondary-foreground: #ffffff;
-  
-  /* Card & Surface Elements */
-  --card: #14161c;
-  --card-foreground: #ffffff;
-  --popover: #14161c;
-  --popover-foreground: #ffffff;
-  
-  /* Accent & Interactive Elements */
-  --accent: rgba(251, 39, 255, 0.1); /* Reduced opacity for better performance */
-  --accent-foreground: #ffffff;
-  
-  /* Muted Elements */
-  --muted: #1a1d25;
-  --muted-foreground: #a3a3c2;
-  
-  /* Borders & Inputs - More prominent borders */
-  --border: rgba(251, 39, 255, 0.4); /* Increased opacity for more visibility */
-  --input: #1a1d25;
-  --ring: rgba(0, 206, 255, 0.7); /* Increased visibility */
-  
+
+  /* Accent & States */
+  --accent: rgba(99,102,241,0.08);
+  --accent-foreground: var(--primary);
+  --muted: #f3f4f6;
+  --muted-foreground: #6b7280;
+  --border: #e5e7eb;
+  --input: #f9fafb;
+  --ring: rgba(99,102,241,0.4);
+
   /* Destructive */
-  --destructive: #ff4a4a;
+  --destructive: #ef4444;
   --destructive-foreground: #ffffff;
-  
-  /* Charts & Visualizations */
-  --chart-1: var(--primary);
-  --chart-2: var(--secondary);
-  --chart-3: #9945FF;
-  --chart-4: #14F195;
-  --chart-5: #FFAF3A;
-  
+
+  /* Charts */
+  --chart-1: var(--brand-primary);
+  --chart-2: var(--brand-secondary);
+  --chart-3: #10b981;
+  --chart-4: #f59e0b;
+  --chart-5: #ec4899;
+
   /* Sidebar */
   --sidebar: var(--background);
   --sidebar-foreground: var(--foreground);
@@ -157,12 +170,8 @@
     font-family: 'Inter', sans-serif;
     font-size: 16px;
     letter-spacing: -0.01em;
-    /* Simplified background for better performance */
-    background-image: radial-gradient(
-      circle at center,
-      rgba(251, 39, 255, 0.02) 0%,
-      rgba(0, 206, 255, 0.02) 100%
-    );
+    /* Cleaner background — remove heavy radial glow, keep subtle tone */
+    background-image: radial-gradient(circle at center, rgba(99,102,241,0.03) 0%, rgba(63,131,248,0.03) 100%);
     background-attachment: fixed;
   }
   

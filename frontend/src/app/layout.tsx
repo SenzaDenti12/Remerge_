@@ -52,7 +52,7 @@ export default function RootLayout({
         {children}
           </ClientLayout>
         </AuthProvider>
-        <Toaster theme="dark" position="top-center" richColors closeButton />
+        <Toaster theme="light" position="top-center" richColors closeButton />
       </body>
     </html>
   );
