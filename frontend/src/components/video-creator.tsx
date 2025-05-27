@@ -175,7 +175,7 @@ export default function VideoCreator() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedJobId, setGeneratedJobId] = useState<string | null>(null);
   const [jobStatus, setJobStatus] = useState<any>(null);
-  const [pollingIntervalId, setPollingIntervalId] = useState<NodeJS.Timeout | null>(null);
+  const [pollingIntervalId, setPollingIntervalId] = useState<ReturnType<typeof setInterval> | undefined>(undefined);
   const [resultVideoUrl, setResultVideoUrl] = useState<string | null>(null);
   
   // Script states  
@@ -429,7 +429,7 @@ export default function VideoCreator() {
   const stopPolling = useCallback(() => {
     if (pollingIntervalId) {
       clearInterval(pollingIntervalId);
-      setPollingIntervalId(null);
+      setPollingIntervalId(undefined);
     }
   }, [pollingIntervalId]);
   
@@ -554,7 +554,7 @@ export default function VideoCreator() {
     // Clear any existing polling
     if (pollingIntervalId) {
       clearInterval(pollingIntervalId);
-      setPollingIntervalId(null);
+      setPollingIntervalId(undefined);
     }
     
     console.log("🚀 STARTING TO POLL FOR VIDEO STATUS - Job ID:", jobId);
@@ -563,7 +563,7 @@ export default function VideoCreator() {
     pollJobStatus(jobId, token);
     
     // Always set up regular polling; a separate effect will stop it when appropriate
-    const intervalId = setInterval(() => {
+    let intervalId: ReturnType<typeof setInterval> | undefined = setInterval(() => {
       console.log("📊 Polling job status...");
       pollJobStatus(jobId, token);
     }, 2000); // Poll every 2 seconds for faster updates
@@ -1046,6 +1046,34 @@ export default function VideoCreator() {
     // Cleanup on unmount
     return () => body.classList.remove("hide-main-header");
   }, [activeStep]);
+
+  // --------- Fallback long-poller if regular polling misses the completion ---------
+  useEffect(() => {
+    if (!generatedJobId || resultVideoUrl) return; // nothing to do
+    let intervalId: ReturnType<typeof setInterval> | undefined;
+    const setupFallback = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      const token = session.access_token;
+      intervalId = setInterval(async () => {
+        try {
+          const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_API_URL}/api/job-status/${generatedJobId}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (!res.ok) return;
+          const data = await res.json();
+          if (data.status === 'completed' && data.final_url) {
+            setResultVideoUrl(data.final_url);
+            setJobStatus(data);
+            setActiveStep('result');
+            clearInterval(intervalId);
+          }
+        } catch {}
+      }, 15000); // every 15s
+    };
+    setupFallback();
+    return () => { if (intervalId) clearInterval(intervalId); };
+  }, [generatedJobId, resultVideoUrl, supabase, activeStep]);
 
   return (
     <div className="space-y-8">

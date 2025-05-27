@@ -21,6 +21,8 @@ interface VideoCreation {
   thumbnail?: string;
 }
 
+const PLACEHOLDER_THUMB = "https://placehold.co/320x180/0A0A0A/FFFFFF?text=ReMerge"; // quick CDN placeholder
+
 export default function DashboardClientComponent() {
   const [user, setUser] = useState<User | null>(null);
   const [credits, setCredits] = useState<number | string>('Loading...');
@@ -337,25 +339,16 @@ export default function DashboardClientComponent() {
                             {pastVideos.map(video => (
                                 <div key={video.id} className="bg-card/80 backdrop-blur-sm rounded-lg overflow-hidden border border-border transition-shadow hover:shadow-lg hover:border-primary/20">
                                     <div className="aspect-video bg-muted/20 relative">
-                                        {video.thumbnail && video.thumbnail.trim() ? (
-                                            <img 
-                                                src={video.thumbnail} 
-                                                alt={video.title || 'Video thumbnail'}
-                                                className="w-full h-full object-cover"
-                                                onError={(e) => {
-                                                    console.error("Failed to load thumbnail:", video.thumbnail);
-                                                    (e.target as HTMLImageElement).style.display = 'none';
-                                                    (e.target as HTMLImageElement).parentElement?.classList.add('flex', 'items-center', 'justify-center', 'bg-muted/10');
-                                                    const fallback = document.createElement('div');
-                                                    fallback.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground"><path d="m22 8-6-6H6a2 2 0 0 0-2 2v16c0 1.1.9 2 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M16 2v6h6"/><path d="M12 18v-6"/><path d="m9 15 3 3 3-3"/></svg>`;
-                                                    (e.target as HTMLImageElement).parentElement?.appendChild(fallback);
-                                                }}
-                                            />
-                                        ) : (
-                                            <div className="w-full h-full flex items-center justify-center bg-muted/10">
-                                                <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground"><path d="m22 8-6-6H6a2 2 0 0 0-2 2v16c0 1.1.9 2 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M16 2v6h6"/><path d="M12 18v-6"/><path d="m9 15 3 3 3-3"/></svg>
-                                            </div>
-                                        )}
+                                        <img
+                                            src={video.thumbnail && video.thumbnail.trim() ? video.thumbnail : PLACEHOLDER_THUMB}
+                                            alt={video.title || 'Video thumbnail'}
+                                            className="w-full h-full object-cover"
+                                            onError={(e) => {
+                                                if ((e.target as HTMLImageElement).src !== PLACEHOLDER_THUMB) {
+                                                   (e.target as HTMLImageElement).src = PLACEHOLDER_THUMB;
+                                                }
+                                            }}
+                                        />
                                     </div>
                                     <div className="p-5">
                                         {editingVideoId === video.id ? (
